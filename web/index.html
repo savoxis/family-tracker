@@ -488,9 +488,14 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
 .bal em{flex-basis:100%;text-align:right;font-style:normal;font-size:.85rem;line-height:1;margin:-.05rem 0 .05rem;opacity:.85;font-family:var(--f-body);font-weight:800}
 .chore.wait{border-style:dashed;border-color:var(--mc)}
 .chore.wait .box{color:var(--mc);opacity:.55}
-.tmrs{display:flex;gap:.5rem}
-.tmr{background:var(--accent,#3552D6);color:#fff;border-radius:2rem;padding:.35rem .9rem;font-family:var(--f-display);font-weight:600;font-size:1.3rem;font-variant-numeric:tabular-nums;white-space:nowrap}
-.tmr.done{background:#D9432E}
+.tmrs{display:flex;flex-wrap:wrap;gap:.6rem;flex:none}
+.tmrs:empty{display:none}
+.tmr{display:flex;align-items:center;gap:.9rem;background:var(--accent);color:var(--accent-ink);border-radius:1.4rem;padding:.4rem .5rem .4rem 1.2rem}
+.tm-n{font-weight:700;font-size:1.15rem;max-width:12rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tm-l{font-family:var(--f-display);font-weight:700;font-size:2.4rem;line-height:1;font-variant-numeric:tabular-nums}
+.tmr .btn{background:color-mix(in srgb,var(--accent-ink) 20%,transparent);color:inherit;border:0;min-height:3rem}
+.tmr.done{background:var(--bad);color:#fff}
+.tmr.done .btn{background:rgba(255,255,255,.22)}
 [hidden]{display:none!important}
 #alarm{position:fixed;inset:0;z-index:120;background:rgba(20,24,34,.86);display:grid;place-items:center}
 .al-box{background:var(--panel);border-radius:2rem;padding:2.5rem 3.5rem;text-align:center;display:flex;flex-direction:column;gap:1.5rem;animation:pulse 1s infinite}
@@ -580,8 +585,8 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <div class="grow"></div>
   <button class="nextup" id="nextup" data-act="nextEv" hidden></button>
   <button class="btn primary apvchip" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
-  <div class="tmrs" id="tmrs"></div>
 </header>
+<div class="tmrs" id="tmrs"></div>
 <div class="notice" id="notice" hidden></div>
 
 <main>
@@ -1383,7 +1388,17 @@ function startTimer(min, name){
 function fmtLeft(ms){ var t = Math.max(0, Math.ceil(ms/1000)), h = Math.floor(t/3600), m = Math.floor(t%3600/60), sc = t%60; return (h ? h+':'+pad(m) : m)+':'+pad(sc); }
 function renderTmrs(){
   var el = $('#tmrs'); if(!el) return;
-  setHtml(el, S.timers.map(function(t){ var left = t.end - Date.now(); return '<span class="tmr'+(left <= 0 ? ' done' : '')+'">'+esc(t.name === 'Timer' ? '' : t.name+' ')+fmtLeft(left)+'</span>'; }).join(''));
+  var key = S.timers.map(function(t){ return t.id+'|'+t.name+'|'+(t.end <= Date.now() ? 'd' : 'r'); }).join(',');
+  if(el._k !== key){
+    el._k = key;
+    el.innerHTML = S.timers.map(function(t){
+      var done = t.end <= Date.now();
+      return '<div class="tmr'+(done ? ' done' : '')+'" role="timer"><span class="tm-n">'+esc(t.name === 'Timer' ? 'Timer' : t.name)+'</span><b class="tm-l" data-id="'+t.id+'"></b>'
+        + '<button class="btn sm" data-act="tmrReset" data-id="'+t.id+'" aria-label="Reset '+esc(t.name)+'">Reset</button>'
+        + '<button class="btn sm" data-act="tmrDel" data-id="'+t.id+'" aria-label="Stop '+esc(t.name)+'">Stop</button></div>';
+    }).join('');
+  }
+  S.timers.forEach(function(t){ var d = el.querySelector('.tm-l[data-id="'+t.id+'"]'); if(d){ var s = fmtLeft(t.end - Date.now()); if(d.textContent !== s) d.textContent = s; } });
 }
 function beep(){
   try {
@@ -2287,7 +2302,15 @@ var H = {
   chorePart:function(t){ patchChore(t.dataset.id, function(n){ if(t.dataset.v) n.part = t.dataset.v; else delete n.part; }); renderOverlay(true); },
   tmrGo:function(t){ startTimer(+t.dataset.n); },
   tmrCustom:function(){ startTimer(parseFloat($('#tm-min') && $('#tm-min').value), $('#tm-name') && $('#tm-name').value); },
-  tmrDel:function(t){ S.timers = S.timers.filter(function(x){ return x.id !== t.dataset.id; }); saveTimers(); renderTmrs(); renderOverlay(true); },
+  tmrDel:function(t){
+    if(S.alarm && S.alarm.id === t.dataset.id){ S.alarm = null; clearInterval(alarmT); $('#alarm').hidden = true; }
+    S.timers = S.timers.filter(function(x){ return x.id !== t.dataset.id; }); saveTimers(); renderTmrs(); renderOverlay(true);
+  },
+  tmrReset:function(t){
+    var x = S.timers.filter(function(y){ return y.id === t.dataset.id; })[0]; if(!x) return;
+    if(S.alarm && S.alarm.id === x.id){ S.alarm = null; clearInterval(alarmT); $('#alarm').hidden = true; }
+    x.end = Date.now() + (x.min || 5) * 60000; saveTimers(); renderTmrs(); renderOverlay(true);
+  },
   alarmStop:stopAlarm,
   zoom:function(t){ var v = t.dataset.v === '100' ? 100 : Math.max(50, Math.min(200, zoomVal() + (+t.dataset.v))); try { localStorage.setItem('kb-zoom', String(v)); } catch(e){} applyZoom(); renderOverlay(true); },
   saverSet:function(t){ try { localStorage.setItem('kb-saver', t.dataset.v); } catch(e){} renderOverlay(true); },
