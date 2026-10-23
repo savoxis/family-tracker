@@ -1323,6 +1323,11 @@ function activityHtml(mid){
     return '<div class="row" style="padding:.4rem .75rem"><span class="grow" style="font-weight:700">'+esc(dl)+'</span><span style="font-weight:700;color:'+(e.t === 'e' ? 'var(--star-ink)' : 'var(--ink2)')+'">'+(e.t === 'e' ? 'Earned '+e.n+' star'+(e.n === 1 ? '' : 's') : esc(e.title)+', '+e.n+' star'+(e.n === 1 ? '' : 's'))+'</span></div>';
   }).join('')+'</div>';
 }
+/* Where an event came from: typed in on this board, or synced from Google, a school or another calendar feed. */
+function sourceLabel(e){
+  var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source ? 'Calendar feed' : 'This board';
+  return s + (e.source && e.cal ? ' ('+e.cal+')' : '');
+}
 function eventView(){
   var e = S.ui.ev; if(!e) return '<div class="sh"><h2>Event</h2>'+close()+'</div>';
   var when;
@@ -1339,7 +1344,9 @@ function eventView(){
     + (rp ? '<dt>Repeats</dt><dd>'+esc(rp)+'</dd>' : '')
     + (who ? '<dt>Who</dt><dd>'+esc(who.name)+'</dd>' : '')
     + (e.location ? '<dt>Where</dt><dd>'+esc(e.location)+'</dd>' : '')
+    + '<dt>From</dt><dd>'+esc(sourceLabel(e))+'</dd>'
     + '</dl>'
+    + (e.source ? '<p class="hint">Synced automatically. Changes made here are replaced at the next sync, so make them at the source.</p>' : '')
     + '<div class="facts"><button class="btn primary" data-act="editEvent">'+(e.rep ? 'Edit all' : 'Edit')+'</button>'
     + (e.rep ? armBtn('s'+e.id+e.occ, 'Skip this day', 'skipOcc', '') : '')
     + armBtn('e'+e.id, e.rep ? 'Delete all' : 'Delete', 'delEvent', '')+'</div>';
@@ -1459,7 +1466,7 @@ var REPS = [['','Never'],['daily','Every day'],['weekdays','Weekdays'],['weekly'
 function repLabel(r){ var x = REPS.filter(function(y){ return y[0] === r; })[0]; return x ? x[1] : ''; }
 function mkOcc(d, dk){
   var m = S.members.filter(function(x){ return x.id === d.who; })[0];
-  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk};
+  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk, source:d.source || '', cal:d.cal || ''};
   var span = Math.max(0, Math.round((parseKey(d.ed || d.sd) - parseKey(d.sd)) / 864e5));
   if(d.allDay){ base.allDay = true; base.sk = dk; base.ek = dkey(addDays(parseKey(dk), span + 1)); return base; }
   var st = new Date(dk+'T'+(d.st || '09:00')+':00'); if(isNaN(st.getTime())) return null;

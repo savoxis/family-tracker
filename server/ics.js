@@ -2,8 +2,9 @@
 /**
  * Minimal iCalendar reader for the Kitchen Board. Zero dependencies.
  *
- * build(text, opts) turns a Google Calendar "secret address in iCal format" feed into board
- * event documents ({title, allDay, sd, ed, st, et, loc, who, src, cal}) for a window of days
+ * build(text, opts) turns a calendar feed (Google "secret address in iCal format", ParentSquare
+ * subscribe link, any .ics) into board event documents
+ * ({title, allDay, sd, ed, st, et, loc, who, src, cal, source}) for a window of days
  * around now. Recurring events are expanded into one document per day they occur. Times are
  * shown in the board time zone. Supports DAILY, WEEKLY, MONTHLY and YEARLY rules with INTERVAL,
  * COUNT, UNTIL, BYDAY (with 1MO or -1FR style numbers), BYMONTHDAY and BYMONTH, plus EXDATE,
@@ -229,7 +230,7 @@ function build(text, opts) {
       sd = a.y + '-' + pad(a.m) + '-' + pad(a.d); ed = b.y + '-' + pad(b.m) + '-' + pad(b.d);
       st = pad(a.h) + ':' + pad(a.mi); et = pad(b.h) + ':' + pad(b.mi);
     }
-    return { sd, ed, d: Object.assign(base, { allDay: !!s.allDay, sd, ed, st, et, loc: (ev.loc || '').trim(), who: '', src: 'gcal', cal: label }) };
+    return { sd, ed, d: Object.assign(base, { allDay: !!s.allDay, sd, ed, st, et, loc: (ev.loc || '').trim(), who: opts.who || '', src: 'gcal', cal: label, source: opts.source || 'calendar' }) };
   }
 
   const dayOf = (v, tz) => {

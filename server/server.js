@@ -33,9 +33,18 @@
  * SMS_REMIND_AT=HH:MM (board time) for a daily "chores left" nudge. SMS_DAILY_MAX (12) caps
  * texts per day, SMS_DRYRUN=1 only logs. The key and numbers are secrets and are never logged in full.
  *
+ * ParentSquare (see parentsquare.js): PARENTSQUARE_USER, PARENTSQUARE_PASSWORD and PS_SCHOOLS
+ * (school id and the child it belongs to, like 13482:Xander,13486:Bastian). The server signs in
+ * itself, renews the session, and texts the parents about new school posts and unread messages,
+ * naming the child. PS_MINUTES (15), PS_DRYRUN=1 only logs. The password is never logged.
+ *
+ * Calendar feeds can be tied to a family member with Label@Member|url (their events then show in
+ * that person's color), and every synced event carries a source: google, school or calendar.
+ *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
  *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
+ *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_MINUTES (15), PS_DRYRUN,
  *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN,
  *      TEXTBELT_KEY, SMS_TO, SMS_REMIND_AT, SMS_DAILY_MAX (12), SMS_DRYRUN
  */
@@ -46,6 +55,7 @@ const ics = require('./ics');
 const { Keep } = require('./keep');
 const keepsync = require('./keepsync');
 const sms = require('./sms');
+const parentsquare = require('./parentsquare');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -61,10 +71,21 @@ const BACKUP_RE = /^board-\d{8}-\d{6}\.json$/;
 const ICS_MS = Math.max(1000, Math.round(parseFloat(process.env.ICS_MINUTES || '15') * 60 * 1000) || 900000);
 const ICS_FEEDS = (process.env.ICS_URLS || '').split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean).map((s, i) => {
   const k = s.indexOf('|');
-  const label = (k > 0 ? s.slice(0, k) : 'Calendar ' + (i + 1)).trim();
+  const head = (k > 0 ? s.slice(0, k) : 'Calendar ' + (i + 1)).trim();
+  const at = head.indexOf('@'); // Label@Member shows that feed's events as that family member's
+  const label = (at > 0 ? head.slice(0, at) : head).trim();
+  const who = at > 0 ? head.slice(at + 1).trim() : '';
   const url = (k > 0 ? s.slice(k + 1) : s).trim().replace(/^webcal:/i, 'https:');
-  return /^https?:\/\//i.test(url) ? { label, url } : null;
+  const host = (/^https?:\/\/([^/]+)/i.exec(url) || [])[1] || '';
+  const source = /google\.com$/i.test(host) ? 'google' : /parentsquare\.com$/i.test(host) ? 'school' : 'calendar';
+  return /^https?:\/\//i.test(url) ? { label, who, source, url } : null;
 }).filter(Boolean);
+const memberIdByName = (name) => {
+  const want = String(name || '').trim().toLowerCase();
+  if (!want) return '';
+  const hit = Object.entries(state.data.members).find(([, m]) => String((m && m.name) || '').trim().toLowerCase() === want);
+  return hit ? hit[0] : '';
+};
 const KEEP_MS = Math.max(1000, Math.round(parseFloat(process.env.KEEP_MINUTES || '2') * 60 * 1000) || 120000);
 const KEEP_ON = !!(process.env.KEEP_EMAIL && process.env.KEEP_MASTER_TOKEN && process.env.KEEP_LIST);
 let keepSync = null;
@@ -187,7 +208,7 @@ function applyFeed(label, docs) {
 async function syncCalendars() {
   for (const feed of ICS_FEEDS) {
     try {
-      const docs = ics.build(await fetchFeed(feed.url), { label: feed.label, boardTz: process.env.BOARD_TZ });
+      const docs = ics.build(await fetchFeed(feed.url), { label: feed.label, boardTz: process.env.BOARD_TZ, who: memberIdByName(feed.who), source: feed.source });
       const changed = applyFeed(feed.label, docs);
       if (changed) console.log('Calendar "' + feed.label + '": ' + docs.size + ' events, ' + changed + ' changed');
     } catch (e) {
@@ -278,6 +299,26 @@ function startSms() {
     + (process.env.SMS_REMIND_AT ? ', evening nudge at ' + process.env.SMS_REMIND_AT : ''));
   smsNudge();
   setInterval(smsNudge, 60000).unref();
+}
+
+/* ---------- parentsquare: school posts and unread messages, told to the parents ---------- */
+function startParentSquare() {
+  const schools = process.env.PS_SCHOOLS.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
+    const i = s.indexOf(':');
+    return { id: (i > 0 ? s.slice(0, i) : s).trim(), child: i > 0 ? s.slice(i + 1).trim() : '' };
+  }).filter((s) => /^\d+$/.test(s.id));
+  if (!schools.length) { console.error('ParentSquare: PS_SCHOOLS has no school ids (use 13482:Xander,13486:Bastian)'); return; }
+  const ps = parentsquare.create({
+    base: process.env.PS_BASE, user: process.env.PARENTSQUARE_USER, password: process.env.PARENTSQUARE_PASSWORD, schools,
+    stateFile: path.join(DATA_DIR, 'ps-seen.json'),
+    minLoginGapMs: process.env.PS_LOGIN_GAP_MS ? parseInt(process.env.PS_LOGIN_GAP_MS, 10) : undefined,
+    notify: (m) => (smsOut && process.env.PS_DRYRUN !== '1' ? smsOut.send(m) : console.log('ParentSquare alert (' + (smsOut ? 'dry run' : 'texts are off') + '): ' + m)),
+    log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
+  });
+  const run = () => ps.poll().catch((e) => console.error('ParentSquare poll failed: ' + e.message));
+  console.log('ParentSquare on for ' + schools.map((s) => (s.child ? s.child + ' at ' : '') + 'school ' + s.id).join(', '));
+  run();
+  setInterval(run, Math.max(1000, Math.round(parseFloat(process.env.PS_MINUTES || '15') * 60 * 1000) || 900000)).unref();
 }
 
 /* ---------- http helpers ---------- */
@@ -388,6 +429,7 @@ function start() {
     }
     if (KEEP_ON) startKeep();
     if (SMS_ON) startSms();
+    if (process.env.PARENTSQUARE_USER && process.env.PARENTSQUARE_PASSWORD && process.env.PS_SCHOOLS) startParentSquare();
     dropOrphanCalendarEvents();
     if (ICS_FEEDS.length) {
       console.log('Calendar sync on for: ' + ICS_FEEDS.map((f) => f.label).join(', '));

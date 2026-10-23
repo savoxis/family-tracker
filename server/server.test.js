@@ -148,7 +148,7 @@ test('syncs a calendar feed into events, follows changes, and never logs the lin
   const p = 20000 + Math.floor(Math.random() * 1000);
   const url = 'http://127.0.0.1:' + feedSrv.address().port + '/cal/secret-token/basic.ics';
   const c = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
-    env: Object.assign({}, process.env, { PORT: String(p), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), ICS_URLS: 'Test|' + url, ICS_MINUTES: '0.02', BACKUP_HOURS: '0' })
+    env: Object.assign({}, process.env, { PORT: String(p), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), ICS_URLS: 'Test@Kid|' + url, ICS_MINUTES: '0.02', BACKUP_HOURS: '0' })
   });
   let out = '';
   c.stdout.on('data', (d) => { out += d; });
@@ -166,6 +166,15 @@ test('syncs a calendar feed into events, follows changes, and never logs the lin
     const e = Object.values(s.data.events)[0];
     assert.strictEqual(e.src, 'gcal');
     assert.strictEqual(e.cal, 'Test');
+    assert.strictEqual(e.source, 'calendar'); // not Google or a school, so a plain calendar feed
+    assert.strictEqual(e.who, ''); // Kid is not a family member yet
+    await new Promise((resolve, reject) => {
+      const r = http.request({ host: '127.0.0.1', port: p, method: 'PUT', path: '/api/members/kid1', headers: { 'Content-Type': 'application/json' } }, (res) => { res.resume(); res.on('end', resolve); });
+      r.on('error', reject); r.end(JSON.stringify({ name: 'kid' }));
+    });
+    let bound = false;
+    for (let i = 0; i < 80 && !bound; i++) { bound = Object.values((await state()).data.events).every((x) => x.who === 'kid1'); if (!bound) await new Promise((r) => setTimeout(r, 100)); }
+    assert.ok(bound, 'events were not tied to the family member named in Label@Member');
     feed = cal(['Feed two']);
     assert.deepStrictEqual(await until(['Feed two']), ['Feed two']);
     assert.ok(!out.includes('secret-token'), 'the feed link leaked into the log');

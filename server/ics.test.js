@@ -22,6 +22,15 @@ test('all-day events: end date is inclusive on the board', () => {
   assert.strictEqual(one.cal, 'T');
 });
 
+test('events carry where they came from and who they belong to', () => {
+  const one = [['UID:a', 'SUMMARY:Picture day', 'DTSTART;VALUE=DATE:20261024']];
+  const plain = all(run(one))[0];
+  assert.deepStrictEqual([plain.source, plain.who], ['calendar', '']);
+  const m = build(wrap(one), { now: NOW, label: 'Brockway', who: 'm7', source: 'school' });
+  const d = all(m)[0];
+  assert.deepStrictEqual([d.source, d.who, d.cal, d.src], ['school', 'm7', 'Brockway', 'gcal']);
+});
+
 test('UTC times are shown in the calendar zone, text is unescaped, folded lines join', () => {
   const m = run([['UID:c', 'SUMMARY:Dentist\\, Dr. Lee', 'LOCATION:Main St\\; Suite 2', 'DTSTART:20261026T160000Z', 'DTEND:20261026T173000Z',
     'DESCRIPTION:long', ' folded', 'BEGIN:VALARM', 'SUMMARY:should be ignored', 'END:VALARM']]);
