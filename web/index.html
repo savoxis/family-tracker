@@ -110,6 +110,10 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .sp p{margin:.45rem 0 0;color:var(--ink2);font-size:.98rem;line-height:1.35}
 .sp.cmp textarea{width:100%;margin:.4rem 0;resize:vertical}
 .sp .err{margin:.4rem 0 0;color:var(--bad);font-weight:700}
+.sp .bub{background:var(--panel);border-radius:.9rem;padding:.5rem .75rem;margin:.45rem 0;max-width:94%}
+.sp .bub.mine{margin-left:auto;background:color-mix(in srgb,var(--accent) 22%,var(--panel))}
+.sp .bub small{display:block;color:var(--ink2);font-weight:700}
+.sp .bub p{margin:.15rem 0 0;color:var(--ink);white-space:pre-wrap}
 .sp .ai{display:block;margin-top:.3rem;font-size:.98rem;line-height:1.3}
 .sp .ai span{display:block}
 .sp a{display:inline-block;margin-top:.45rem;font-weight:700}
@@ -380,17 +384,15 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
 .tm{display:flex;flex-direction:column;gap:.6rem}
 .tm .ev{cursor:default}
 .wx{display:flex;align-items:center;gap:.7rem;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.35rem 1rem;box-shadow:var(--shadow);min-width:0}
-.wxweek{flex:none;display:flex;align-items:stretch;gap:.6rem;min-width:0;overflow-x:auto}
-.wxweek .wk-s{flex:1.6;min-width:12rem;display:flex;flex-direction:column;justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.4rem 1rem;box-shadow:var(--shadow)}
-.wxweek .wk-s small{font-size:.75rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--star-ink)}
-.wxweek .wk-s b{font-size:1rem;font-weight:700;line-height:1.2}
-.wxweek .wk-d{flex:1;min-width:4.4rem;display:flex;flex-direction:column;align-items:center;gap:.05rem;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.3rem .4rem;box-shadow:var(--shadow);text-align:center}
+.wxweek{flex:0 1 auto;display:flex;align-items:stretch;gap:.5rem;min-width:0;overflow:hidden}
+.wxweek .wk-d{flex:none;width:6.2rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.05rem;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.25rem .35rem;box-shadow:var(--shadow);text-align:center}
 .wxweek .wk-d.today{border-color:var(--accent)}
-.wxweek .wk-d small{font-weight:800;font-size:.78rem;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em}
-.wxweek .wk-d .g{font-size:1.45rem;line-height:1.15}
-.wxweek .wk-d b{font-size:1rem;font-weight:700}
+.wxweek .wk-d small{font-weight:800;font-size:.74rem;color:var(--ink2);text-transform:uppercase;letter-spacing:.07em;line-height:1.1}
+.wxweek .wk-d .g{font-size:1.5rem;line-height:1.1}
+.wxweek .wk-d b{font-size:1rem;font-weight:700;line-height:1.1;white-space:nowrap}
 .wxweek .wk-d .lo{color:var(--ink2);font-weight:600}
-.wxweek .wk-d em{font-style:normal;font-size:.76rem;font-weight:800;color:var(--accent)}
+.wxweek .wk-d em{font-style:normal;font-size:.74rem;font-weight:800;line-height:1;color:var(--accent)}
+@media (max-width:1280px){.wxweek{display:none}}
 .wx .t{font-family:var(--f-display);font-weight:600;font-size:2rem;line-height:1}
 .wx small{display:block;font-weight:700;font-size:.85rem;color:var(--ink2)}
 .wx b{display:block;font-size:.95rem;font-weight:700;max-width:14rem;line-height:1.15}
@@ -458,6 +460,7 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   </div>
   <button class="tonight" id="tonight" data-act="meal" hidden></button>
   <div class="wx" id="wx" hidden></div>
+  <div class="wxweek" id="wxweek" role="group" aria-label="Weather this week" hidden></div>
   <div class="grow"></div>
   <button class="btn" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
   <div class="tmrs" id="tmrs"></div>
@@ -470,7 +473,6 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <button class="btn gear" id="gear" aria-label="Setup. Hold to open." title="Hold to open setup"><svg class="ic s"><use href="#i-gear"/></svg></button>
 </header>
 <div class="notice" id="notice" hidden></div>
-<div class="wxweek" id="wxweek" aria-label="Weather this week" hidden></div>
 
 <main>
   <section class="chores" id="chores" aria-label="Chores"></section>
@@ -1100,8 +1102,8 @@ function wxWeekText(dl){
 }
 function wxWeekHtml(){
   var j = WX.d; if(!j || !(S.cfg && S.cfg.wx) || !j.daily.time || j.daily.time.length < 4) return '';
-  var dl = j.daily, n = Math.min(7, dl.time.length);
-  var out = '<div class="wk-s"><small>This week in '+esc(S.cfg.wx.name || 'your area')+'</small><b>'+esc(wxWeekText(dl))+'</b></div>';
+  var dl = j.daily, n = Math.min(3, dl.time.length);
+  var out = '';
   for(var i = 0; i < n; i++){
     var c = dl.weather_code[i], pop = dl.precipitation_probability_max[i] || 0, lab = i === 0 ? 'Today' : DAYS[parseKey(dl.time[i]).getDay()];
     out += '<div class="wk-d'+(i === 0 ? ' today' : '')+'" title="'+esc(wxText(c))+'"><small>'+lab+'</small><span class="g" aria-hidden="true">'+wxGlyph(c)+'</span>'
@@ -1458,9 +1460,43 @@ function spSend(){
 }
 /* a teacher's conversation: who, how many messages, when, and a link to read it on ParentSquare (the text is not kept here) */
 function spMsg(d){
+  var open = S.ui.thr && S.ui.thr.chat === d.chat;
   return '<div class="sp"><a class="sp-m" href="'+esc(d.url)+'" target="_blank" rel="noopener"><b>'+esc(d.name)+'</b>'
     + '<small>'+esc((d.count ? d.count+' messages, ' : '')+'last '+spWhen(d.at))+'</small>'
-    + (d.unread ? '<span class="tags"><span class="tag">New</span></span>' : '')+(d.preview ? '<p>'+esc(d.preview)+'</p>' : '')+'</a></div>';
+    + (d.unread ? '<span class="tags"><span class="tag">New</span></span>' : '')+(d.preview ? '<p>'+esc(d.preview)+'</p>' : '')+'</a>'
+    + '<div class="facts" style="margin-top:.45rem"><button class="btn sm'+(open ? '' : ' primary')+'" data-act="spRead" data-sid="'+esc(d.sid)+'" data-chat="'+esc(d.chat)+'" data-name="'+esc(d.name)+'">'+(open ? 'Hide conversation' : 'Read it here')+'</button></div>'
+    + (open ? spThread() : '')+'</div>';
+}
+/* reading a conversation: the server checks the grown-up PIN, fetches it and hands it back, nothing is kept on the board */
+function spThread(){
+  var t = S.ui.thr;
+  if(!(S.cfg && S.cfg.pin)) return '<p class="hint">Set a grown-up PIN first, in Setup under Display.</p>';
+  if(!t.msgs) return '<div class="addrow"><input class="inp num" type="password" inputmode="numeric" maxlength="4" data-thr="pin" placeholder="PIN" autocomplete="off" aria-label="Grown-up PIN" value="'+esc(t.pin)+'">'
+    + '<button class="btn primary" data-act="spOpenThread"'+(t.busy ? ' disabled' : '')+'>'+(t.busy ? 'Opening...' : 'Open')+'</button></div>'
+    + '<p class="hint" style="margin:.3rem 0 0">The grown-up PIN opens it. Opening a conversation marks it read in ParentSquare.</p>'+(t.err ? '<p class="err">'+esc(t.err)+'</p>' : '');
+  return (t.msgs.length ? t.msgs.map(function(m){
+    return '<div class="bub'+(m.mine ? ' mine' : '')+'"><small>'+esc(m.who+(m.day || m.time ? ', ' : '')+(m.day || '')+(m.day && m.time ? ' ' : '')+(m.time || ''))+'</small><p>'+esc(m.text)+'</p></div>';
+  }).join('') : '<p class="hint">No messages came back.</p>') + '<p class="hint" style="margin:.3rem 0 0">This hides itself after a few minutes.</p>';
+}
+function spRead(t){
+  var c = S.ui.thr;
+  S.ui.thr = c && c.chat === t.dataset.chat ? null : {sid:t.dataset.sid, chat:t.dataset.chat, name:t.dataset.name, pin:'', busy:false, err:'', msgs:null};
+  renderOverlay(true);
+}
+function spOpenThread(){
+  var c = S.ui.thr; if(!c || c.busy) return;
+  if(c.pin.length !== 4){ c.err = 'Enter the 4 digit grown-up PIN.'; renderOverlay(true); return; }
+  c.busy = true; c.err = ''; renderOverlay(true);
+  fetch('/api/school-thread', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sid:c.sid, chat:c.chat, pin:c.pin})})
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(x){
+      if(S.ui.thr !== c) return;
+      c.busy = false; c.pin = '';
+      if(x.ok){ c.msgs = x.j.messages || []; setTimeout(function(){ if(S.ui.thr === c){ S.ui.thr = null; renderOverlay(true); } }, 180000); }
+      else c.err = (x.j && x.j.error) || 'Could not open that.';
+      renderOverlay(true);
+    })
+    .catch(function(){ if(S.ui.thr !== c) return; c.busy = false; c.err = 'Could not reach the board server.'; renderOverlay(true); });
 }
 /* an appointment you signed up for, with the child it is for */
 function spSignup(d){
@@ -1863,6 +1899,7 @@ function renderAll(){
   } else tn.hidden = true;
   var wxe = $('#wx'), wh = S.ready ? wxHtml() : ''; wxe.hidden = !wh; setHtml(wxe, wh);
   var wkw = $('#wxweek'), wkh = S.ready ? wxWeekHtml() : ''; wkw.hidden = !wkh; setHtml(wkw, wkh);
+  wkw.title = wkh ? 'This week in '+((S.cfg.wx && S.cfg.wx.name) || 'your area')+'. '+wxWeekText(WX.d.daily) : '';
   var ab = $('#apvBtn'), pc = S.idx.pend.size; ab.hidden = !pc; $('#apvN').textContent = pc; $('#apvN').hidden = !pc;
   var nn = $('#noteN'); nn.textContent = S.notes.length; nn.hidden = !S.notes.length;
   var sb = $('#schoolBtn'), su = schoolUnreadTotal(); sb.hidden = !S.school.length; $('#schoolN').textContent = su; $('#schoolN').hidden = !su;
@@ -1902,7 +1939,7 @@ function arm(key, run){
   renderOverlay(true);
 }
 function openOv(name, tab){ S.ui.overlay = name; if(tab) S.ui.tab = tab; S.ui.confirm = null; S.ui.del = null; renderOverlay(true); }
-function closeOv(){ S.ui.overlay = null; S.ui.confirm = null; S.ui.del = null; S.ui.editChore = null; S.ui.form = null; renderOverlay(true); }
+function closeOv(){ S.ui.overlay = null; S.ui.confirm = null; S.ui.del = null; S.ui.editChore = null; S.ui.form = null; S.ui.thr = null; S.ui.cmp = null; renderOverlay(true); }
 
 var H = {
   toggle:function(t){ toggleChore(t.dataset.m, t.dataset.c); },
@@ -2001,9 +2038,11 @@ var H = {
   srvSet:function(){ var u = ($('#srv-url') && $('#srv-url').value || '').trim(); if(!u) return; if(!/^https?:\/\//.test(u)) u = 'http://'+u; if(window.KBApp && KBApp.setServer) KBApp.setServer(u); },
   srvOff:function(){ if(window.KBApp && KBApp.setServer) KBApp.setServer(''); },
   openNotes:function(){ openOv('notes'); },
-  openSchool:function(){ S.ui.sp = null; S.ui.cmp = null; openOv('school'); },
+  openSchool:function(){ S.ui.sp = null; S.ui.cmp = null; S.ui.thr = null; openOv('school'); },
   spCompose:spCompose,
   spSend:spSend,
+  spRead:spRead,
+  spOpenThread:spOpenThread,
   spToggle:function(t){ S.ui.sp = S.ui.sp === t.dataset.id ? null : t.dataset.id; renderOverlay(true); },
   wxFind:geoSearch,
   wxPick:function(t){ var r = S.ui.geo[+t.dataset.i]; if(!r) return; S.ui.geo = null; setCfg({wx:{name:r.name, lat:r.lat, lon:r.lon}}); loadWx(true); },
@@ -2090,6 +2129,7 @@ document.addEventListener('input', function(e){
   var t = e.target, k = t.dataset && t.dataset.f, f = S.ui.form;
   if(t.id === 'bk') S.ui.bk = t.value;
   if(t.dataset && t.dataset.cmp && S.ui.cmp){ S.ui.cmp[t.dataset.cmp] = t.value; return; }
+  if(t.dataset && t.dataset.thr && S.ui.thr){ S.ui.thr[t.dataset.thr] = t.value; return; }
   if(!k || !f) return;
   f[k] = t.value;
   if(k === 'sd' && t.value && (!f.ed || f.ed < t.value)){ f.ed = t.value; var ed = $('#f-ed'); if(ed) ed.value = t.value; }

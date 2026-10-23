@@ -18,7 +18,7 @@ const post = (o) => '<div id="feed_' + o.id + '" data-feed-levels="[&quot;' + o.
 
 // A small stand-in for ParentSquare: CSRF token, cookie session, redirect to /signin when signed out.
 function fakeSite() {
-  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {}, paths: [], signups: {}, chats: {}, sent: [], reject: false, wp: [] };
+  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {}, paths: [], signups: {}, chats: {}, sent: [], reject: false, wp: [], threads: {} };
   const page = (id) => {
     const s = site.schools[id] || { name: 'Unknown', posts: [], unread: 0 };
     return '<html><head><title>Posts | ' + s.name + ' | ParentSquare</title></head><body>'
@@ -61,6 +61,10 @@ function fakeSite() {
         if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
         return res.end('<meta name="csrf-token" content="CSRF-OK">' + (site.chats[x[1]] || ''));
       }
+      if (req.method === 'GET' && (x = /^\/schools\/(\d+)\/users\/777\/chats\/(\d+)$/.exec(req.url))) {
+        if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
+        return res.end(site.threads[x[2]] || '<html>empty</html>');
+      }
       if ((x = /^\/schools\/(\d+)\/users\/777\/chats\/new\?private=true$/.exec(req.url))) {
         if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
         return res.end('<meta name="csrf-token" content="CSRF-OK"><form id="user-chat-form"></form>');
@@ -92,6 +96,10 @@ const signupPost = (id, title, body) => '<div id="feed_' + id + '" data-feed-lev
 const dateHead = (t) => '<div class="wish-list-date space-between "><span>' + t + '</span></div>';
 const chatItem = (id, name, n, when, preview) => '<a class="a-chat-thread a-chat-thread-' + id + ' " role="button" aria-label="Conversation with ' + name + '. ' + n + ' messages total. Last message sent: ' + when + '" aria-selected="false"><span class="user-thread-chat-name-' + id + '">' + name
   + '</span><span class="badge badge-outline">' + n + '</span><div class="date">' + when + '</div><span class="reaction-icons">' + (preview || '') + '</span></a>';
+const bubble = (id, who, mine, time, body) => '<div class="chat-message-container"><div id="chat-message-' + id + '" class="chat-message chat-box chat-thread ' + (mine ? 'sent-message pull-right' : 'received-message pull-left')
+  + '"><div class="chat-message-meta row"><div class="col-xs-12"><span class="user color-primary pull-left"><a aria-label="' + who + '" href="/u">' + who + '</a></span></div></div><div class="chat-message row"><div class="col-xs-12" dir="auto"><p>'
+  + body + '</p></div></div><div class="chat-message-timestamp d-flex justify-content-end"><span class="date"> ' + time + ' </span></div></div></div>';
+const dayHead = (t) => '<div class="chat-day-header"><span class="chat-day-header-text">' + t + '</span></div>';
 const mk = (site, base, extra) => {
   const out = { calls: [], logs: [] };
   out.w = ps.create(Object.assign({ base, user: site.user, password: site.pass, schools: [{ id: '1', child: 'Xander' }, { id: '2', child: 'Bastian' }], minLoginGapMs: 0,
@@ -306,10 +314,11 @@ test('only a teacher the server found can be messaged, empty and huge messages a
 });
 
 // The whole server against the stand-in ParentSquare: the PIN gate, the lockout and the hourly cap.
-async function serverWithSite(extraEnv, seed, posts) {
+async function serverWithSite(extraEnv, seed, posts, setup) {
   const site = fakeSite();
   const base = await site.listen();
   site.schools = { 1: { name: 'Brockway Elementary', unread: 0, posts: [] }, 2: { name: 'McGovern Elementary', unread: 0, posts: posts || [] } };
+  if (setup) setup(site);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-psmsg-'));
   if (seed) fs.writeFileSync(path.join(dir, 'board.json'), JSON.stringify({ rev: 1, data: Object.assign({ members: {}, chores: {}, rewards: {}, events: {}, ledger: {}, meals: {}, groceries: {}, notes: {}, config: {}, school: {} }, seed) }));
   const port = 23000 + Math.floor(Math.random() * 1000);
@@ -363,6 +372,54 @@ test('server: the right PIN sends one message, and the hourly cap holds', async 
     assert.strictEqual((await send('A third note')).status, 429, 'over the hourly cap');
     assert.strictEqual(s.site.sent.length, 2);
     assert.ok(!s.log().includes('See you at the conference') && !s.log().includes('4321'), 'message or PIN in the log');
+  } finally { await s.stop(); }
+});
+
+test('a conversation page is read into who, when, mine or theirs, and the words', () => {
+  const NOW2 = Date.UTC(2026, 9, 22, 20, 0, 0);
+  const html = dayHead('Tue, Oct 20') + bubble(1, 'Kayla Knight', false, '7:19 am', 'Hi &amp; hello') + dayHead('Yesterday') + bubble(2, 'Zachary Child', true, '8:00 am', 'Thanks for telling me')
+    + dayHead('Today') + bubble(3, 'Kayla Knight', false, '3:05 pm', 'A longer note<br>on two lines') + '<form id="user-chat-form"></form>';
+  const t = ps.parseThread(html, 'UTC', NOW2);
+  assert.deepStrictEqual(t.map((m) => [m.who, m.mine, m.day, m.time, m.text]), [
+    ['Kayla Knight', false, 'Tue, Oct 20', '7:19 am', 'Hi & hello'],
+    ['You', true, 'Wed, Oct 21', '8:00 am', 'Thanks for telling me'],
+    ['Kayla Knight', false, 'Thu, Oct 22', '3:05 pm', 'A longer note on two lines']]);
+  assert.deepStrictEqual(ps.parseThread('<html></html>', 'UTC', NOW2), []);
+});
+
+test('server: a conversation is only read with the PIN, only if it was listed, and its text is never stored', async () => {
+  const s = await serverWithSite({}, undefined, [], (site) => {
+    site.chats = { 1: chatItem(11, 'Kayla Knight', 3, 'Thu 10/22/26, 3:05 pm') };
+    site.threads = { 11: dayHead('Today') + bubble(1, 'Kayla Knight', false, '3:05 pm', 'sensitive thread words') + bubble(2, 'Zachary Child', true, '3:20 pm', 'my private reply') };
+  });
+  try {
+    assert.ok(s.ready, 'server did not start: ' + s.log());
+    const ask = (o) => s.call('POST', '/api/school-thread', Object.assign({ sid: '1', chat: '11', pin: '4321' }, o));
+    assert.strictEqual((await ask({})).status, 403, 'no PIN set yet');
+    await s.call('PUT', '/api/config/display', { pin: '4321' });
+    assert.strictEqual((await ask({ pin: '1111' })).status, 403, 'wrong PIN');
+    assert.strictEqual((await ask({ chat: '99' })).status, 404, 'a conversation the server never listed');
+    assert.strictEqual((await ask({ sid: '2' })).status, 404, 'right id, wrong school');
+    assert.ok(!s.site.paths.some((p) => /\/chats\/\d+$/.test(p) && p.startsWith('GET')), 'nothing was opened before the PIN was right');
+    const ok = await ask({});
+    assert.strictEqual(ok.status, 200);
+    assert.deepStrictEqual([ok.json.name, ok.json.messages.map((m) => [m.who, m.mine, m.text])], ['Kayla Knight', [['Kayla Knight', false, 'sensitive thread words'], ['You', true, 'my private reply']]]);
+    assert.strictEqual(s.site.paths.filter((p) => /^GET \/schools\/1\/users\/777\/chats\/11$/.test(p)).length, 1, 'opened exactly once, only now');
+    const state = JSON.stringify((await s.call('GET', '/api/state')).json);
+    assert.ok(!state.includes('sensitive thread words') && !state.includes('my private reply'), 'the conversation text got into the board data');
+    assert.ok(!s.log().includes('sensitive thread words') && !s.log().includes('4321'), 'text or PIN in the log');
+  } finally { await s.stop(); }
+});
+
+test('server: wrong PINs on reading count toward the same lockout as sending', async () => {
+  const s = await serverWithSite({}, undefined, [], (site) => { site.chats = { 1: chatItem(11, 'Kayla Knight', 3, 'Thu 10/22/26, 3:05 pm') }; site.threads = { 11: dayHead('Today') + bubble(1, 'Kayla Knight', false, '3:05 pm', 'hello') }; });
+  try {
+    assert.ok(s.ready, 'server did not start: ' + s.log());
+    await s.call('PUT', '/api/config/display', { pin: '4321' });
+    for (let i = 0; i < 5; i++) assert.strictEqual((await s.call('POST', '/api/school-thread', { sid: '1', chat: '11', pin: '000' + i })).status, 403);
+    assert.strictEqual((await s.call('POST', '/api/school-thread', { sid: '1', chat: '11', pin: '4321' })).status, 429, 'locked, even with the right PIN');
+    assert.strictEqual((await s.call('POST', '/api/school-message', { sid: '2', tid: '14347987', text: 'hi', pin: '4321' })).status, 429, 'sending is locked too');
+    assert.ok(!s.site.paths.some((p) => /\/chats\/\d+$/.test(p) && p.startsWith('GET')), 'nothing was opened during the lockout');
   } finally { await s.stop(); }
 });
 

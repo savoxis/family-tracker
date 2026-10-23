@@ -73,6 +73,32 @@ function parseFeed(html) {
   return { posts, unread: u ? parseInt(u[1], 10) : 0, school: sn ? decode(sn[1]).trim() : '', uid: me ? me[1] : '' };
 }
 
+// "Today" and "Yesterday" headers become real dates, so a message still reads right when it is looked at later.
+function dayLabel(label, tz, nowMs) {
+  const fmt = (ms) => new Intl.DateTimeFormat('en-US', { timeZone: validTz(tz) ? tz : 'UTC', weekday: 'short', month: 'short', day: 'numeric' }).format(new Date(ms));
+  return /^today$/i.test(label) ? fmt(nowMs) : /^yesterday$/i.test(label) ? fmt(nowMs - 864e5) : label;
+}
+
+// One conversation page: who wrote each message, when, whether it was you, and the words. Returned to the caller and
+// not stored anywhere. The latest 40 messages at most.
+function parseThread(html, tz, nowMs) {
+  const out = [];
+  let day = '';
+  const re = /class="chat-day-header-text">\s*([^<]*?)\s*<|<div class="chat-message-container">([\s\S]*?)(?=<div class="chat-message-container">|class="chat-day-header|<form\b|$)/g;
+  let m;
+  while ((m = re.exec(html))) {
+    if (m[1] !== undefined) { day = dayLabel(decode(m[1]).trim(), tz, nowMs); continue; }
+    const c = m[2];
+    const body = /<div class="chat-message row">\s*<div class="col-xs-12"[^>]*>([\s\S]*?)<\/div>\s*<\/div>/.exec(c);
+    if (!body) continue;
+    const who = /<span class="user[^"]*"[^>]*>\s*<a[^>]*aria-label="([^"]+)"/.exec(c);
+    const tm = /class="chat-message-timestamp[^"]*">\s*<span class="date">\s*([^<]+?)\s*</.exec(c);
+    const mine = !/received-message/.test(c.slice(0, 400));
+    out.push({ who: mine ? 'You' : (who ? decode(who[1]).trim() : ''), mine, day, time: tm ? tm[1].trim() : '', text: text(body[1]).slice(0, 2000) });
+  }
+  return out.slice(-40);
+}
+
 const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 const WDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const pad = (n) => (n < 10 ? '0' : '') + n;
@@ -170,6 +196,7 @@ function create(o) {
   const uids = new Map();            // school id -> this login's user id there
   const teachers = new Map();        // 'sid|name' -> {id, name, role, sid}
   const threads = new Map();         // 'sid|name' -> conversation id, so a message can be a reply in the existing thread
+  const knownChats = new Map();      // school id -> set of conversation ids the last look listed
   let lastSend = 0, sending = Promise.resolve();
 
   const cookieHeader = () => [...jar].map(([k, v]) => k + '=' + v).join('; ');
@@ -316,6 +343,18 @@ function create(o) {
     return p;
   }
 
+  // Reads one conversation, only one the last look listed. Opening it marks it read on ParentSquare, which is what
+  // reading it means, so the board only does this when a grown-up asks and has given the PIN.
+  async function readThread(a) {
+    if (stopped) throw new Error('ParentSquare sign-in is not working');
+    const uid = uids.get(a.sid), known = knownChats.get(a.sid);
+    if (!uid || !known || !known.has(String(a.chat))) throw new Error('that conversation is not available');
+    if (!jar.size && !(await login())) throw new Error('could not sign in to ParentSquare');
+    const html = await getPage('/schools/' + a.sid + '/users/' + uid + '/chats/' + a.chat);
+    if (!html) throw new Error('ParentSquare did not return the conversation');
+    return parseThread(html, o.tz, now());
+  }
+
   // One look at every school. Hands o.onData(docs, okSchoolIds) the documents for the School view.
   // A school that could not be read is left alone, so its last known posts stay on the board.
   async function poll() {
@@ -352,10 +391,11 @@ function create(o) {
         // Newest conversations first. ParentSquare reports how many messages are unread, so that many of the newest are flagged.
         const recent = (r.chats || []).filter((c) => c.at && now() - new Date(c.at).getTime() < 45 * 864e5).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 5);
         recent.forEach((c, i) => {
-          docs.set('ps-chat-' + c.id, { src: 'parentsquare', kind: 'message', sid: s.id, name: c.name, count: c.count, at: c.at, unread: i < r.unread, preview: c.preview,
+          docs.set('ps-chat-' + c.id, { src: 'parentsquare', kind: 'message', sid: s.id, chat: c.id, name: c.name, count: c.count, at: c.at, unread: i < r.unread, preview: c.preview,
             school: s.name || '', childName: s.child || '', url: base + '/schools/' + s.id + '/users/' + (uids.get(s.id) || '') + '/chats/' + c.id });
         });
         for (const c of (r.chats || [])) threads.set(s.id + '|' + String(c.name).toLowerCase(), c.id);
+        if (r.chats) knownChats.set(s.id, new Set(r.chats.map((c) => c.id)));
         for (const tn of (o.teachers || []).filter((x) => x.child && x.child.toLowerCase() === String(s.child || '').toLowerCase())) {
           let t = null;
           try { t = await findTeacher(s, tn.name); } catch (e) { log('ParentSquare teacher lookup failed: ' + (e.name === 'TimeoutError' ? 'timeout' : 'network'), true); }
@@ -371,7 +411,7 @@ function create(o) {
     return docs;
   }
 
-  return { poll, login, parseFeed, send };
+  return { poll, login, parseFeed, send, readThread };
 }
 
-module.exports = { create, parseFeed, parseSignups, parseChats, appointmentTitle };
+module.exports = { create, parseFeed, parseSignups, parseChats, parseThread, appointmentTitle };

@@ -51,6 +51,10 @@
  * from Setup is checked here, not in the page: 5 wrong tries lock it for 10 minutes, PS_SEND_MAX (5) caps
  * messages per hour, and only teachers the server found itself can be written to.
  *
+ * Reading a conversation: POST /api/school-thread {sid, chat, pin} returns the messages of a conversation
+ * the server listed, after the same PIN check. The text is returned and never stored. Opening a
+ * conversation marks it read on ParentSquare.
+ *
  * Flyer reader (see gemini.js): GEMINI_API_KEY turns it on. Each new public school post is read once with
  * Gemini (text and up to two pictures) for a short summary, what to do or bring, and dates it states.
  * GEMINI_DAILY_MAX (15) keeps inside the free allowance, GEMINI_MODEL (gemini-3.5-flash-lite) picks the model.
@@ -423,19 +427,46 @@ function startParentSquare() {
 /* ---------- messaging a child's teacher, only with the approval PIN ---------- */
 const pinFails = []; // when wrong PINs were tried
 const sentAt = [];   // when messages were sent
+// The grown-up PIN, checked here and not in the page. Wrong tries are counted for everything that needs it, and five
+// of them lock it for ten minutes. Returns null when the PIN is right, otherwise the answer to send back.
+function pinGate(b, t) {
+  while (pinFails.length && t - pinFails[0] > 600000) pinFails.shift();
+  const pin = String((((state.data.config || {}).display) || {}).pin || '');
+  if (!pin) return { status: 403, error: 'Set an approval PIN in Setup first' };
+  if (pinFails.length >= 5) return { status: 429, error: 'Too many wrong PINs. Try again in a few minutes' };
+  const given = Buffer.from(String(b.pin || '')), want = Buffer.from(pin);
+  if (!(given.length === want.length && crypto.timingSafeEqual(given, want))) { pinFails.push(t); return { status: 403, error: 'Wrong PIN' }; }
+  return null;
+}
+
+// Reads one conversation with a teacher, for a grown-up who gave the PIN. The text is handed back and not kept
+// on the board, so it is not in the board data or its backups.
+async function schoolThread(req, res) {
+  if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+  if (!psApi) return send(res, 503, { error: 'Messages are not set up' });
+  let b;
+  try { b = await readBody(req); } catch (e) { return send(res, e.status || 400, { error: 'bad body' }, { Connection: 'close' }); }
+  const gate = pinGate(b, Date.now());
+  if (gate) return send(res, gate.status, { error: gate.error });
+  const m = Object.values(state.data.school).find((d) => d && d.kind === 'message' && d.sid === String(b.sid) && d.chat === String(b.chat));
+  if (!m) return send(res, 404, { error: 'That conversation is not available' });
+  try {
+    const messages = await psApi.readThread({ sid: m.sid, chat: m.chat });
+    return send(res, 200, { ok: true, name: m.name, messages });
+  } catch (e) {
+    return send(res, 502, { error: e.message });
+  }
+}
+
 async function schoolMessage(req, res) {
   if (req.method !== 'POST') return send(res, 405, { error: 'method' });
   if (!psApi) return send(res, 503, { error: 'Messaging is not set up' });
   let b;
   try { b = await readBody(req); } catch (e) { return send(res, e.status || 400, { error: 'bad body' }, { Connection: 'close' }); }
   const t = Date.now();
-  while (pinFails.length && t - pinFails[0] > 600000) pinFails.shift();
   while (sentAt.length && t - sentAt[0] > 3600000) sentAt.shift();
-  const pin = String((((state.data.config || {}).display) || {}).pin || '');
-  if (!pin) return send(res, 403, { error: 'Set an approval PIN in Setup first' });
-  if (pinFails.length >= 5) return send(res, 429, { error: 'Too many wrong PINs. Try again in a few minutes' });
-  const given = Buffer.from(String(b.pin || '')), want = Buffer.from(pin);
-  if (!(given.length === want.length && crypto.timingSafeEqual(given, want))) { pinFails.push(t); return send(res, 403, { error: 'Wrong PIN' }); }
+  const gate = pinGate(b, t);
+  if (gate) return send(res, gate.status, { error: gate.error });
   // Only a teacher the server itself found and listed can be written to, never an id the page makes up.
   const tc = Object.values(state.data.school).find((d) => d && d.kind === 'teacher' && d.sid === String(b.sid) && d.tid === String(b.tid));
   if (!tc) return send(res, 404, { error: 'That teacher is not available to message' });
@@ -489,6 +520,7 @@ function readBody(req) {
 async function api(req, res, parts) {
   if (parts.length === 1 && parts[0] === 'health') return send(res, 200, { ok: true });
   if (parts.length === 1 && parts[0] === 'school-message') return schoolMessage(req, res);
+  if (parts.length === 1 && parts[0] === 'school-thread') return schoolThread(req, res);
   if (parts.length === 1 && parts[0] === 'state') {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
     return send(res, 200, state);
