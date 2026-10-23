@@ -137,6 +137,10 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .glb{display:flex;flex-direction:column;gap:.45rem;align-items:flex-start;text-align:left;width:100%;border:0;background:none;padding:0;color:inherit}
 .glb .gl{width:100%}
 .agenda .gl span{font-size:1.1rem}
+.agenda .strip{grid-column:auto;align-self:stretch;flex-direction:column;flex-wrap:nowrap;gap:.6rem;margin-top:.5rem}
+.agenda .goalbox,.agenda .cdown{flex:none;background:var(--panel2);border:0;border-radius:1.1rem;padding:.7rem 1rem}
+.agenda .cdown .n{font-size:2.2rem;min-width:2.6rem}
+.agenda .goalbox b{font-size:1.35rem}
 .agenda .dn{border-radius:1.2rem;padding:.7rem 1rem}
 .agenda .dn small.k{margin:0 0 .1rem;color:var(--star-ink)}
 .agenda .dn b{font-size:1.8rem}
@@ -1505,7 +1509,6 @@ function renderChores(){
       + (S.cel && S.cel.mid === m.id ? celebrate(m) : '')
       + '</article>';
   }).join('');
-  html += stripHtml();
   if(!S.chores.length) html += '<div class="empty" style="grid-column:1/-1"><div>No chores yet. Add some in Setup (hold the gear).</div></div>';
   el.style.setProperty('--n', Math.max(1, Math.min(members.length, 3)));
   setHtml(el, html);
@@ -1557,6 +1560,7 @@ function renderSide(){
   var html = '<section class="sc agenda"><div class="sc-h"><h3>Today</h3><span class="sc-n">'+(te.length ? plural(te.length, 'thing') : 'Clear')+'</span></div>'
     + (tl || '<p class="none">Nothing else planned.</p>')
     + (ne.length ? '<small class="k ag-k">Tomorrow</small>'+nl : '')
+    + stripHtml()
     + '<div class="ag-sep"></div>'
     + dn(tk, 'Dinner tonight', '') + dn(tmk, 'Tomorrow', ' sm')
     + schoolLunchHtml(now)
