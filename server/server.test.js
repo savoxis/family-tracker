@@ -90,6 +90,53 @@ test('serves the page and blocks path tricks', async () => {
   assert.strictEqual((await req('GET', '/nope.html')).status, 404);
 });
 
+async function waitFor(fn, ms) {
+  const end = Date.now() + ms;
+  for (;;) {
+    const v = fn();
+    if (v) return v;
+    if (Date.now() > end) return v;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+}
+const listBackups = (dir) => {
+  try { return fs.readdirSync(path.join(dir, 'backups')).filter((n) => /^board-\d{8}-\d{6}\.json$/.test(n)).sort(); } catch (e) { return []; }
+};
+
+test('writes a backup at start that holds the board', async () => {
+  const names = await waitFor(() => { const n = listBackups(DATA); return n.length ? n : null; }, 3000);
+  assert.ok(names, 'no backup appeared');
+  const b = JSON.parse(fs.readFileSync(path.join(DATA, 'backups', names[0]), 'utf8'));
+  assert.strictEqual(typeof b.rev, 'number');
+  assert.ok(b.data && b.data.members);
+});
+
+test('keeps only the newest BACKUP_KEEP backups and skips unchanged ones', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-bk-'));
+  const bdir = path.join(dir, 'backups');
+  fs.mkdirSync(bdir);
+  const old = ['20200101-000000', '20200102-000000', '20200103-000000', '20200104-000000', '20200105-000000'];
+  old.forEach((s) => fs.writeFileSync(path.join(bdir, 'board-' + s + '.json'), '{}'));
+  const p = 19000 + Math.floor(Math.random() * 1000);
+  const run = () => spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: Object.assign({}, process.env, { PORT: String(p), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), BACKUP_KEEP: '3' })
+  });
+  const quit = (c) => new Promise((resolve) => { c.on('exit', resolve); c.kill('SIGTERM'); });
+  let c = run();
+  try {
+    const names = await waitFor(() => { const n = listBackups(dir); return n.length === 3 && !n.includes('board-20200101-000000.json') ? n : null; }, 4000);
+    assert.ok(names, 'expected 3 backups, got ' + listBackups(dir).join(','));
+    assert.ok(names[2] > 'board-20200105-000000.json', 'newest backup should be the new one');
+    await quit(c);
+    c = run();
+    await new Promise((r) => setTimeout(r, 1000));
+    assert.deepStrictEqual(listBackups(dir), names, 'restart with no change must not add a backup');
+  } finally {
+    await quit(c);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('data survives a restart', async () => {
   await req('PUT', '/api/members/m1', JSON.stringify({ name: 'Test Kid' }), JSON_H);
   await stopServer();

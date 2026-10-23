@@ -13,7 +13,11 @@
  *
  * There is no login. Run it on a trusted LAN only. Do not port-forward it.
  *
- * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web)
+ * Backups: a copy of the board goes to DATA_DIR/backups/board-<UTC time>.json at start and then
+ * every BACKUP_HOURS, skipped when nothing changed, newest BACKUP_KEEP files kept.
+ *
+ * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
+ *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28)
  */
 const http = require('http');
 const fs = require('fs');
@@ -26,6 +30,10 @@ const PUBLIC_DIR = path.resolve(
   process.env.PUBLIC_DIR ||
     (fs.existsSync(path.join(__dirname, 'public')) ? path.join(__dirname, 'public') : path.join(__dirname, '..', 'web'))
 );
+const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+const BACKUP_MS = Math.round(parseFloat(process.env.BACKUP_HOURS || '6') * 3600 * 1000) || 0;
+const BACKUP_KEEP = Math.max(1, parseInt(process.env.BACKUP_KEEP || '28', 10) || 28);
+const BACKUP_RE = /^board-\d{8}-\d{6}\.json$/;
 const MAX_BODY = 256 * 1024;
 const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -79,6 +87,34 @@ function persist() {
     await fs.promises.rename(tmp, DATA_FILE);
   });
   return saving;
+}
+
+/* ---------- backups ---------- */
+async function backup() {
+  try {
+    await saving.catch(() => {});
+    await fs.promises.mkdir(BACKUP_DIR, { recursive: true });
+    const names = (await fs.promises.readdir(BACKUP_DIR)).filter((n) => BACKUP_RE.test(n)).sort();
+    const body = JSON.stringify(state);
+    if (names.length) {
+      const last = await fs.promises.readFile(path.join(BACKUP_DIR, names[names.length - 1]), 'utf8').catch(() => null);
+      if (last === body) return null;
+    }
+    const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 15);
+    const name = 'board-' + stamp + '.json';
+    const tmp = path.join(BACKUP_DIR, name + '.tmp');
+    await fs.promises.writeFile(tmp, body);
+    await fs.promises.rename(tmp, path.join(BACKUP_DIR, name));
+    if (!names.includes(name)) names.push(name);
+    for (const old of names.slice(0, Math.max(0, names.length - BACKUP_KEEP))) {
+      await fs.promises.unlink(path.join(BACKUP_DIR, old)).catch(() => {});
+    }
+    console.log('Backup written: ' + name);
+    return name;
+  } catch (e) {
+    console.error('Backup failed: ' + e.message);
+    return null;
+  }
 }
 
 /* ---------- http helpers ---------- */
@@ -180,6 +216,10 @@ const server = http.createServer(async (req, res) => {
 function start() {
   server.listen(PORT, '0.0.0.0', () => {
     console.log('Kitchen Board on port ' + PORT + ', data in ' + DATA_FILE + (loaded.fresh ? ' (new)' : ''));
+    if (BACKUP_MS > 0) {
+      backup();
+      setInterval(backup, BACKUP_MS).unref();
+    }
   });
 }
 if (loaded.fresh) persist().then(start, start); else start();

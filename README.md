@@ -24,6 +24,8 @@ UnRAID: copy `deploy/unraid/kitchen-board.xml` to `/boot/config/plugins/dockerMa
 
 There is no login. Keep it on the home network.
 
+Backups: the server copies the board to `<data dir>/backups/board-<UTC time>.json` at start and every 6 hours, skips it when nothing changed, and keeps the newest 28. Set `BACKUP_HOURS` (0 turns it off) and `BACKUP_KEEP` to change that. To restore, stop the container and copy a backup over `board.json`.
+
 ## Android
 
 ```
