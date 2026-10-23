@@ -134,7 +134,14 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .agenda small.k{font-size:.85rem;letter-spacing:.12em;color:var(--ink2)}
 .ag-k{margin-top:.4rem}
 .ag-sep{height:1px;background:var(--line);margin:.5rem 0 .3rem;flex:none}
-.glb{display:flex;flex-direction:column;gap:.45rem;align-items:flex-start;text-align:left;width:100%;border:0;background:none;padding:0;color:inherit}
+.glb{display:flex;flex-direction:column;gap:.45rem;align-items:flex-start;text-align:left;width:100%}
+.k-btn{border:0;background:none;padding:0;text-align:left;color:inherit}
+.gchip{border:0;background:var(--panel2);border-radius:2rem;padding:.35rem .9rem;min-height:2.6rem;font-weight:600;font-size:1.1rem;color:var(--ink)}
+.gchip:active{background:color-mix(in srgb,var(--accent) 22%,var(--panel2))}
+.gchip.more{color:var(--ink2)}
+.sc-h .btn.sm{min-height:2.7rem}
+button.goalbox,button.cdown{text-align:left;color:var(--ink);font:inherit;width:100%}
+button.goalbox:active,button.cdown:active{transform:translateY(1px)}
 .glb .gl{width:100%}
 .agenda .gl span{font-size:1.1rem}
 .agenda .strip{grid-column:auto;align-self:stretch;flex-direction:column;flex-wrap:nowrap;gap:.6rem;margin-top:.5rem}
@@ -1168,10 +1175,12 @@ function stripHtml(){
     var t = goalTotals(g), pct = Math.min(100, t.tot / g.target * 100);
     var segs = S.members.filter(function(m){ return t.by[m.id]; }).map(function(m){ return '<i style="--mc:'+m.color+';width:'+Math.min(100, t.by[m.id] / g.target * 100).toFixed(1)+'%"></i>'; }).join('');
     var left = Math.max(0, g.target - t.tot);
-    parts += '<div class="goalbox"><div class="gt"><small>Family goal</small><b>'+esc(g.title || 'Our goal')+'</b><span class="gn">'+(left ? left+' stars to go' : 'Goal reached!')+'</span></div><div class="gbar" aria-label="'+Math.round(pct)+' percent">'+segs+'</div></div>';
+    parts += '<button class="goalbox" data-act="openRewards" aria-label="Family goal. Open rewards."><div class="gt"><small>Family goal</small><b>'+esc(g.title || 'Our goal')+'</b><span class="gn">'+(left ? left+' stars to go' : 'Goal reached!')+'</span></div><div class="gbar" aria-label="'+Math.round(pct)+' percent">'+segs+'</div></button>';
   }
+  S.upEvs = [];
   upcoming().forEach(function(o){
-    parts += '<div class="cdown" style="--mc:'+o.e.color+'"><div class="n">'+o.n+'</div><span><small>day'+(o.n === 1 ? '' : 's')+' to</small>'+esc(o.e.title)+'</span></div>';
+    S.upEvs.push(o.e);
+    parts += '<button class="cdown" style="--mc:'+o.e.color+'" data-act="upEv" data-i="'+(S.upEvs.length-1)+'"><div class="n">'+o.n+'</div><span><small>day'+(o.n === 1 ? '' : 's')+' to</small>'+esc(o.e.title)+'</span></button>';
   });
   return parts ? '<div class="strip">'+parts+'</div>' : '';
 }
@@ -1570,17 +1579,17 @@ function renderSide(){
     return '<button class="dn'+cls+'" data-act="meal" data-d="'+dk+'"><small class="k">'+lab+'</small>'+(m && m.dinner ? '<b>'+esc(m.dinner)+'</b>' : '<b class="dim">Tap to plan it</b>')+'</button>';
   }
   var gs = S.groceries.filter(function(g){ return !g.done; });
-  var gl = gs.slice(0, 8).map(function(g){ return '<span>'+esc(g.title)+'</span>'; }).join('') + (gs.length > 8 ? '<span>+ '+(gs.length-8)+' more</span>' : '');
+  var gl = gs.slice(0, 8).map(function(g){ return '<button class="gchip" data-act="grocTog" data-id="'+g.id+'" aria-label="Got '+esc(g.title)+'">'+esc(g.title)+'</button>'; }).join('') + (gs.length > 8 ? '<button class="gchip more" data-act="openGroc">+ '+(gs.length-8)+' more</button>' : '');
   // One agenda in reading order: what is on, what to eat, what to buy, what school said.
-  var html = '<section class="sc agenda"><div class="sc-h"><h3>Today</h3><span class="sc-n">'+(te.length ? plural(te.length, 'thing') : 'Clear')+'</span></div>'
+  var html = '<section class="sc agenda"><div class="sc-h"><h3>Today</h3><span class="sc-n">'+(te.length ? plural(te.length, 'thing') : 'Clear')+'</span><button class="btn sm" data-act="newOn" data-d="'+tk+'" aria-label="Add an event today">+ Event</button></div>'
     + (tl || '<p class="none">Nothing else planned.</p>')
     + (ne.length ? '<small class="k ag-k">Tomorrow</small>'+nl : '')
     + stripHtml()
     + '<div class="ag-sep"></div>'
     + dn(tk, 'Dinner tonight', '') + dn(tmk, 'Tomorrow', ' sm')
     + schoolLunchHtml(now)
-    + '<button class="glb" data-act="openGroc"><small class="k ag-k">Need from the store'+(gs.length ? ' ('+gs.length+')' : '')+'</small>'
-    + (gl ? '<span class="gl">'+gl+'</span>' : '<span class="none">Nothing on the list.</span>')+'</button>';
+    + '<div class="glb"><button class="k-btn" data-act="openGroc"><small class="k ag-k">Need from the store'+(gs.length ? ' ('+gs.length+')' : '')+' &rsaquo;</small></button>'
+    + (gl ? '<span class="gl">'+gl+'</span>' : '<span class="none">Nothing on the list.</span>')+'</div>';
   if(S.school.length){
     var sp = schoolPosts().filter(function(p){ return Date.now() - new Date(p.at || 0).getTime() < 10 * 864e5; }), su = schoolUnreadTotal();
     var sl = sp.slice(0, 3).map(function(p){
@@ -2235,6 +2244,7 @@ var H = {
   closeCal:function(){ document.body.classList.remove('calopen'); railActive(); },
   goBoard:function(){ document.body.classList.remove('calopen'); closeOv(); },
   nextEv:function(){ if(S.nextEv){ S.ui.ev = S.nextEv; openOv('event'); } },
+  upEv:function(t){ S.ui.ev = S.upEvs[+t.dataset.i]; if(S.ui.ev) openOv('event'); },
   evSide:function(t){ S.ui.ev = S.sideEvs[+t.dataset.i]; openOv('event'); },
   openApprove:function(){ S.ui.pin = ''; S.ui.then = null; openOv('approve'); },
   openTimer:function(){ openOv('timer'); },
