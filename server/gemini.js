@@ -13,6 +13,9 @@
 const fs = require('fs');
 
 const BASE = 'https://generativelanguage.googleapis.com/v1beta';
+// A small fast model that answers in a second or two. The "latest" aliases can point at slower thinking models that never
+// answer within a minute, which burned the daily allowance on timeouts, so the model is pinned.
+const DEFAULT_MODEL = 'gemini-3.5-flash-lite';
 const MAX_IMAGE = 4 * 1024 * 1024;
 
 const clip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1).trim() + '...' : s; };
@@ -65,7 +68,7 @@ async function readPost(o, post, today) {
     if (im) parts.push({ inline_data: { mime_type: im.mime, data: im.data } });
   }
   const res = await fetch((o.base || BASE) + '/models/' + o.model + ':generateContent', {
-    method: 'POST', signal: AbortSignal.timeout(60000),
+    method: 'POST', signal: AbortSignal.timeout(45000),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': o.key },
     body: JSON.stringify({ contents: [{ parts }], generationConfig: { temperature: 0.2, responseMimeType: 'application/json' } })
   });
@@ -82,7 +85,8 @@ function create(o) {
   const now = o.now || Date.now;
   const tz = o.tz || 'UTC';
   const dailyMax = o.dailyMax || 15;
-  const model = o.model || 'gemini-flash-latest';
+  const model = o.model || DEFAULT_MODEL;
+  let failsInARow = 0;
   let st = { day: '', used: 0, stop: false, posts: {} };
   try { const j = JSON.parse(fs.readFileSync(o.file, 'utf8')); if (j && typeof j === 'object') st = Object.assign(st, j, { posts: j.posts || {} }); } catch (e) { /* first run */ }
   let running = false, queue = new Map();
@@ -114,13 +118,19 @@ function create(o) {
         st.used += 1;
         try {
           const r = await readPost({ key: o.key, model, base: o.base }, p, today);
+          failsInARow = 0;
           st.posts[p.id] = { r: r || { summary: '', action: '', events: [] }, at: new Date(now()).toISOString() };
           save();
           if (r && o.onResult) o.onResult(p.id, r);
           log('Gemini: read a school post' + (r ? '' : ' (nothing useful found)') + ', ' + st.used + ' of ' + dailyMax + ' used today');
         } catch (e) {
           if (e.quota) { st.stop = true; log('Gemini: daily limit reached, stopping for today', true); }
-          else log('Gemini failed: ' + (e.name === 'TimeoutError' ? 'timeout' : e.message), true);
+          else {
+            log('Gemini failed: ' + (e.name === 'TimeoutError' ? 'timeout' : e.message), true);
+            // two failures in a row means something is wrong, so stop for the day instead of using up the allowance
+            failsInARow += 1;
+            if (failsInARow >= 2) { st.stop = true; log('Gemini: stopping for today after repeated failures', true); }
+          }
           save();
         }
         await new Promise((r) => setTimeout(r, o.gapMs === undefined ? 2000 : o.gapMs));
@@ -132,4 +142,4 @@ function create(o) {
   return { offer, cached, stats: () => ({ used: st.used, day: st.day, stop: st.stop, read: Object.keys(st.posts).length, waiting: queue.size }) };
 }
 
-module.exports = { create, clean };
+module.exports = { create, clean, DEFAULT_MODEL };

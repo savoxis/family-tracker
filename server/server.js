@@ -53,7 +53,7 @@
  *
  * Flyer reader (see gemini.js): GEMINI_API_KEY turns it on. Each new public school post is read once with
  * Gemini (text and up to two pictures) for a short summary, what to do or bring, and dates it states.
- * GEMINI_DAILY_MAX (15) keeps inside the free allowance, GEMINI_MODEL (gemini-flash-latest) picks the model.
+ * GEMINI_DAILY_MAX (15) keeps inside the free allowance, GEMINI_MODEL (gemini-3.5-flash-lite) picks the model.
  * Messages are never sent to Gemini. The key is never logged.
  *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
@@ -397,7 +397,7 @@ function startGemini() {
     },
     log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
   });
-  console.log('Flyer reader on (' + (process.env.GEMINI_MODEL || 'gemini-flash-latest') + ', up to ' + (parseInt(process.env.GEMINI_DAILY_MAX || '15', 10) || 15) + ' a day)');
+  console.log('Flyer reader on (' + (process.env.GEMINI_MODEL || gemini.DEFAULT_MODEL) + ', up to ' + (parseInt(process.env.GEMINI_DAILY_MAX || '15', 10) || 15) + ' a day)');
 }
 
 function startParentSquare() {

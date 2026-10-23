@@ -28,6 +28,7 @@ function fake(opts) {
       seen.calls.push(parts[0].text);
       seen.imageParts += parts.filter((p) => p.inline_data).length;
       if (opts.quota && seen.calls.length > opts.quota) { res.statusCode = 429; return res.end('{}'); }
+      if (opts.fail) { res.statusCode = 500; return res.end('{}'); }
       res.setHeader('Content-Type', 'application/json');
       const answer = opts.answer || { summary: 'Picture day is Thursday.', action: 'Send the form back by Friday.', events: [{ title: 'Picture day', date: '2026-10-29', time: '08:30' }, { title: 'Far away', date: '2031-01-01', time: '' }, { title: 'Bad date', date: 'soon', time: '' }] };
       res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: typeof answer === 'string' ? answer : JSON.stringify(answer) }] } }] }));
@@ -95,6 +96,19 @@ test('only worthwhile, recent posts are read, newest first, and never past the d
     assert.ok(/newest/.test(f.calls[0]) && /middle/.test(f.calls[1]), 'newest first');
     assert.ok(!f.calls.some((c) => /old flyer|short words/.test(c)));
     assert.strictEqual(t.g.stats().used, 2);
+  } finally { f.srv.close(); }
+});
+
+test('two failures in a row stop the day, so a broken setup cannot use up the allowance', async () => {
+  const f = fake({ fail: true });
+  const base = await f.listen();
+  const t = mk(tmpFile(), base);
+  try {
+    await t.g.offer([1, 2, 3, 4, 5].map((n) => post(n, { images: [base + '/img/a.png'], at: new Date(NOW - n * 3600000).toISOString() })));
+    assert.strictEqual(f.calls.length, 2, 'only two attempts, then it stops');
+    assert.ok(t.logs.some((l) => /repeated failures/.test(l)));
+    assert.strictEqual(t.g.cached('ps-1'), null, 'nothing is marked as read');
+    assert.strictEqual(gemini.DEFAULT_MODEL, 'gemini-3.5-flash-lite');
   } finally { f.srv.close(); }
 });
 
