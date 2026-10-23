@@ -3,39 +3,39 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="theme-color" content="#F2EEE6">
+<meta name="theme-color" content="#F3F1EC">
 <title>Kitchen Board</title>
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="fonts/fonts.css">
 </head>
 <body>
 <style>
-/* Kitchen Board look. One 16:9 wall screen: on a landscape display the whole page scales as a unit (rem tracks the screen), so it looks the same on a 1080p monitor and a 1440x810 Android desktop window. Warm paper in light, deep navy in dark. Member colors and the star are the only saturated things. */
+/* Kitchen Board look. One 16:9 wall screen: on a landscape display the whole page scales as a unit (rem tracks the screen), so it looks the same on a 1080p monitor and a 1440x810 Android desktop window. Warm paper in light, deep navy in dark. Cards are separated by a 1px line, only floating sheets have a shadow. Member colors and the star are the only saturated things. */
 :root{
-  --bg:#F2EEE6; --panel:#FFFFFF; --panel2:#F7F4EE; --ink:#1B2230; --ink2:#5E6676; --line:#E3DDD1;
-  --accent:#3552D6; --accent-ink:#FFFFFF;
-  --star:#F0A500; --star-soft:#FFF1CB; --star-ink:#6B4500;
+  --bg:#F3F1EC; --panel:#FFFFFF; --panel2:#F5F3EE; --ink:#15171C; --ink2:#565B66; --line:#E4E1D9;
+  --accent:#3B4FD8; --accent-ink:#FFFFFF;
+  --star:#E8A200; --star-soft:#FFF3D1; --star-ink:#7A4F00;
   --ok:#1E8A5A; --bad:#C23A2B; --scrim:rgba(16,20,28,.58);
-  --shadow:0 1px 2px rgba(27,34,48,.06),0 8px 24px rgba(27,34,48,.07);
-  --f-display:"Fredoka","Nunito",ui-rounded,"Segoe UI",system-ui,sans-serif;
+  --shadow:none; --shadow-float:0 1px 2px rgba(21,23,28,.06),0 8px 24px rgba(21,23,28,.10);
+  --f-display:"Bricolage Grotesque","Figtree","Segoe UI",system-ui,sans-serif;
   --f-body:"Figtree","Segoe UI",system-ui,-apple-system,sans-serif;
 }
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"]){
-    --bg:#0D1117; --panel:#161C26; --panel2:#1B2230; --ink:#EEF1F6; --ink2:#9BA5B6; --line:#262F3E;
-    --accent:#86A2FF; --accent-ink:#0B1220;
-    --star:#FFC53D; --star-soft:#3A2E10; --star-ink:#FFD879;
+    --bg:#0E1120; --panel:#171B2E; --panel2:#1F2440; --ink:#EEF0F8; --ink2:#A8AFC8; --line:#2A3050;
+    --accent:#8FA2FF; --accent-ink:#0E1120;
+    --star:#FFC93C; --star-soft:#3A2F12; --star-ink:#FFD97A;
     --ok:#4CC38A; --bad:#FF7A6B; --scrim:rgba(0,0,0,.65);
-    --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.35);
+    --shadow:none; --shadow-float:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.35);
     color-scheme:dark;
   }
 }
 :root[data-theme="dark"]{
-  --bg:#0D1117; --panel:#161C26; --panel2:#1B2230; --ink:#EEF1F6; --ink2:#9BA5B6; --line:#262F3E;
-  --accent:#86A2FF; --accent-ink:#0B1220;
-  --star:#FFC53D; --star-soft:#3A2E10; --star-ink:#FFD879;
+  --bg:#0E1120; --panel:#171B2E; --panel2:#1F2440; --ink:#EEF0F8; --ink2:#A8AFC8; --line:#2A3050;
+  --accent:#8FA2FF; --accent-ink:#0E1120;
+  --star:#FFC93C; --star-soft:#3A2F12; --star-ink:#FFD97A;
   --ok:#4CC38A; --bad:#FF7A6B; --scrim:rgba(0,0,0,.65);
-  --shadow:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.35);
+  --shadow:none; --shadow-float:0 1px 2px rgba(0,0,0,.35),0 8px 24px rgba(0,0,0,.35);
   color-scheme:dark;
 }
 html{font-size:calc(clamp(14px,0.5vw + 8.5px,20px) * var(--z,1));height:100%;overscroll-behavior:none}
@@ -62,7 +62,7 @@ input{-webkit-user-select:text;user-select:text}
 /* header */
 .top{display:flex;align-items:center;gap:1.1rem;flex:none}
 .clockbox{display:flex;align-items:baseline;gap:1.2rem}
-.clock{font-family:var(--f-display);font-weight:600;font-size:4.6rem;line-height:1;letter-spacing:-.02em;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.4rem}
+.clock{font-family:var(--f-display);font-weight:700;font-size:4.6rem;line-height:1;letter-spacing:-.035em;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:.4rem}
 .clock small{font-size:1.5rem;font-weight:600;color:var(--ink2);letter-spacing:0}
 .date{font-size:1.55rem;font-weight:600;color:var(--ink2)}
 .top .grow{flex:1}
@@ -216,7 +216,7 @@ body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inse
 
 /* overlays */
 #scrim{position:fixed;inset:0;background:var(--scrim);display:flex;align-items:center;justify-content:center;padding:max(1rem,env(safe-area-inset-top,0px)) max(1rem,env(safe-area-inset-right,0px)) max(1rem,env(safe-area-inset-bottom,0px)) max(1rem,env(safe-area-inset-left,0px));z-index:50}
-#sheet{width:min(66rem,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:1.6rem;box-shadow:var(--shadow);padding:1.3rem 1.4rem 1.5rem}
+#sheet{width:min(66rem,100%);max-height:100%;overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:1.6rem;box-shadow:var(--shadow-float);padding:1.3rem 1.4rem 1.5rem}
 #sheet.small{width:min(34rem,100%)}
 .sh{display:flex;align-items:center;gap:.8rem;margin-bottom:1rem}
 .sh h2{margin:0;flex:1;font-family:var(--f-display);font-weight:600;font-size:2.1rem}
@@ -358,6 +358,10 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
 
 .pic{flex:none;font-size:2.1rem;line-height:1;width:2.7rem;text-align:center;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 .card.pics .pic{font-size:2.7rem;width:3.3rem}
+.gl{width:1em;height:1em;fill:none;stroke:var(--mc,currentColor);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.14em}
+.pic .gl{font-size:.82em;vertical-align:baseline}
+.gl.sm{width:1.15em;height:1.15em;vertical-align:-.2em;margin-right:.15em}
+.icons .chip .gl{vertical-align:-.12em}
 .card.pics .ct{font-size:1.1rem}
 .card.pics .chore{min-height:5rem}
 .chore.done .pic{opacity:.45}
@@ -619,7 +623,7 @@ function routineHtml(m, today){
     if(!l.length) return '';
     return '<div class="rt-g"><span class="rt-h">'+g[1]+'</span>'+l.map(function(c){
       var done = S.idx.rt.has(m.id+'|'+period(c, today)+'_'+c.id);
-      return '<button class="rt'+(done ? ' done' : '')+'" role="checkbox" aria-checked="'+done+'" data-act="toggleRt" data-m="'+m.id+'" data-c="'+c.id+'">'+(iconOf(c) ? '<span class="rt-i" aria-hidden="true">'+iconOf(c)+'</span>' : '')+'<span class="rt-n">'+esc(c.title)+'</span><span class="rt-c"><svg class="ic s"><use href="#i-check"/></svg></span></button>';
+      return '<button class="rt'+(done ? ' done' : '')+'" role="checkbox" aria-checked="'+done+'" data-act="toggleRt" data-m="'+m.id+'" data-c="'+c.id+'">'+(iconOf(c) ? '<span class="rt-i" aria-hidden="true">'+glyph(iconOf(c))+'</span>' : '')+'<span class="rt-n">'+esc(c.title)+'</span><span class="rt-c"><svg class="ic s"><use href="#i-check"/></svg></span></button>';
     }).join('')+'</div>';
   }).join('')+'</div>';
 }
@@ -931,6 +935,43 @@ function guessIcon(t){
   return '';
 }
 function iconOf(c){ return c.icon === 'none' ? '' : (c.icon || guessIcon(c.title)); }
+// Chore pictures: the board stores an emoji, which each device draws differently. These emoji have a stroke icon that is drawn the same everywhere in the member's color; any other emoji a person picks is shown as the emoji.
+var GLYPHS = {
+  '\uD83D\uDECF\uFE0F':'<path d="M3 19V6M3 15h18v4M21 15v-3a3 3 0 00-3-3h-8v6"/><circle cx="6.5" cy="11" r="1.6"/>',
+  '\uD83E\uDEA5':'<path d="M4 20L15 9M13 7l4 4M15 5l2-2 4 4-2 2"/>',
+  '\uD83D\uDC36':'<path d="M12 20c-3 0-5-1.6-5-3.5S9 13 12 13s5 1.6 5 3.5-2 3.5-5 3.5z"/><circle cx="5.5" cy="11" r="1.6"/><circle cx="9" cy="7" r="1.6"/><circle cx="15" cy="7" r="1.6"/><circle cx="18.5" cy="11" r="1.6"/>',
+  '\uD83D\uDC31':'<path d="M5 9l1-5 4 3h4l4-3 1 5v5a7 7 0 01-14 0z"/><path d="M9.5 12h.01M14.5 12h.01M11 15.5l1 1 1-1"/>',
+  '\uD83C\uDF7D\uFE0F':'<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="4"/>',
+  '\uD83E\uDDFC':'<circle cx="9" cy="14" r="5"/><circle cx="17" cy="8" r="3"/><circle cx="18" cy="17" r="2"/>',
+  '\uD83E\uDDF8':'<circle cx="12" cy="13.5" r="6.5"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="6.5" r="2.5"/><path d="M10 12.5h.01M14 12.5h.01M11 16l1 .8 1-.8"/>',
+  '\uD83D\uDCDA':'<path d="M4 5a2 2 0 012-2h13v16H6a2 2 0 00-2 2zM4 19V5M8 7h7"/>',
+  '\uD83D\uDDD1\uFE0F':'<path d="M5 7h14M9 7V4h6v3M7 7l1 13h8l1-13"/>',
+  '\uD83E\uDDFA':'<path d="M4 10h16l-2 10H6zM8 10c0-4 2-6 4-6s4 2 4 6"/>',
+  '\uD83D\uDC5F':'<path d="M3 16l1-8h4l2 3 7 2c2 .5 3 1.5 3 3v1H3z"/>',
+  '\uD83C\uDF92':'<path d="M8 8a4 4 0 018 0M6 8h12v12H6zM9 14h6"/>',
+  '\uD83D\uDEC1':'<path d="M3 12h18v3a4 4 0 01-4 4H7a4 4 0 01-4-4zM6 12V6a2 2 0 014 0M7 19l-1 2M17 19l1 2"/>',
+  '\uD83D\uDC55':'<path d="M8 4L3 7l2 4 3-1v10h8V10l3 1 2-4-5-3c-.5 1.5-2 2.5-4 2.5S8.5 5.5 8 4z"/>',
+  '\uD83C\uDFB9':'<path d="M3 6h18v12H3zM8 13v5M12 13v5M16 13v5M7 6v7h2V6M11 6v7h2V6M15 6v7h2V6"/>',
+  '\uD83E\uDEB4':'<path d="M12 20v-7M12 13c0-4-3-6-7-6 0 4 3 6 7 6zM12 15c0-3 2-5 6-5 0 3-2 5-6 5zM8 21h8"/>',
+  '\uD83E\uDDF9':'<path d="M15 3l-3 8M8 11h8l2 9H6z"/>',
+  '\uD83D\uDCEC':'<path d="M3 7h18v12H3zM3 8l9 6 9-6"/>',
+  '\uD83E\uDD63':'<path d="M3 12h18a8 8 0 01-8 8h-2a8 8 0 01-8-8zM7 8c0-1 1-1 1-2M12 8c0-1 1-1 1-2"/>',
+  '\uD83E\uDD6A':'<path d="M4 11l8-6 8 6M3 14h18M5 17h14v3H5z"/>',
+  '\uD83C\uDF19':'<path d="M20 14.5A8 8 0 019.5 4 8 8 0 1020 14.5z"/>',
+  '\uD83E\uDDF4':'<path d="M9 3h6v3H9zM8 6h8v15H8zM8 12h8"/>',
+  '\uD83D\uDE97':'<path d="M3 16v-3l2-5h14l2 5v3zM3 16v2M21 16v2M4 13h16"/><circle cx="7.5" cy="16" r="1.2"/><circle cx="16.5" cy="16" r="1.2"/>',
+  '\uD83C\uDF3F':'<path d="M5 19c0-8 5-13 14-14 0 9-5 14-14 14zM5 19l8-8"/>',
+  '\uD83D\uDC4B':'<path d="M7 12V6a1.5 1.5 0 013 0v5M10 11V4.5a1.5 1.5 0 013 0V11M13 11V6a1.5 1.5 0 013 0v7M16 10a1.5 1.5 0 013 0v4a7 7 0 01-7 7 6 6 0 01-5-3l-3-5a1.5 1.5 0 012.5-1.5L7 14"/>',
+  '\uD83E\uDD64':'<path d="M6 6h12l-1.5 14h-9zM6 10h12M13 2l-1 4"/>',
+  '\uD83D\uDCDD':'<path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3"/>',
+  '\u26BD':'<circle cx="12" cy="12" r="9"/><path d="M12 8l3 2-1 3.5h-4L9 10zM12 3v5M15 10l5-1.5M14 13.5l3 4M10 13.5l-3 4M9 10L4 8.5"/>'
+};
+function glyph(e, cls){
+  if(!e) return '';
+  if(e === '\u2B50') return '<svg class="ic star"><use href="#i-star"/></svg>';
+  var g = GLYPHS[e];
+  return g ? '<svg class="gl'+(cls ? ' '+cls : '')+'" viewBox="0 0 24 24" aria-hidden="true">'+g+'</svg>' : e;
+}
 function starGuess(t){
   t = String(t||'').toLowerCase();
   if(/room|clean|vacuum|mop|bathroom|yard|garage|mow/.test(t)) return 3;
@@ -1082,8 +1123,8 @@ function wxHtml(){
 }
 /* the week at a glance: one tile per day and a sentence for the whole week */
 function wxGlyph(c){
-  return c === 0 ? '☀️' : c <= 2 ? '⛅' : c === 3 ? '☁️' : (c === 45 || c === 48) ? '🌫️' : (c >= 51 && c <= 57) ? '🌦️'
-    : ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) ? '🌧️' : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? '❄️' : c >= 95 ? '⛈️' : '';
+  return c === 0 ? '\u2600\uFE0F' : c <= 2 ? '\u26C5' : c === 3 ? '\u2601\uFE0F' : (c === 45 || c === 48) ? '\uD83C\uDF2B\uFE0F' : (c >= 51 && c <= 57) ? '\uD83C\uDF26\uFE0F'
+    : ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) ? '\uD83C\uDF27\uFE0F' : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? '\u2744\uFE0F' : c >= 95 ? '\u26C8\uFE0F' : '';
 }
 function wxWeekText(dl){
   var n = Math.min(7, dl.time.length), hs = [], wet = [], frost = [], hot = [];
@@ -1151,7 +1192,7 @@ function approveView(){
     var parts = v.key.split('_'), c = S.chores.filter(function(x){ return x.id === parts[1]; })[0];
     var m = S.members.filter(function(x){ return x.id === v.mid; })[0]; if(!c || !m) return '';
     var d = parts[0].charAt(0) === 'W' ? parts[0].slice(1) : parts[0];
-    return '<div class="apv" style="--mc:'+m.color+'">'+avatar(m,'sm')+'<div class="t">'+(iconOf(c) ? iconOf(c)+' ' : '')+esc(c.title)+'<small>'+esc(m.name)+' &middot; '+esc(parseKey(d).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'}))+' &middot; '+v.stars+' star'+(v.stars === 1 ? '' : 's')+'</small></div>'
+    return '<div class="apv" style="--mc:'+m.color+'">'+avatar(m,'sm')+'<div class="t">'+(iconOf(c) ? glyph(iconOf(c), 'sm')+' ' : '')+esc(c.title)+'<small>'+esc(m.name)+' &middot; '+esc(parseKey(d).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'}))+' &middot; '+v.stars+' star'+(v.stars === 1 ? '' : 's')+'</small></div>'
       + '<button class="btn primary" data-act="apvYes" data-m="'+v.mid+'" data-k="'+esc(v.key)+'">Approve</button><button class="btn" data-act="apvNo" data-m="'+v.mid+'" data-k="'+esc(v.key)+'">Not yet</button></div>';
   }).join('');
   return head + (rows ? rows + '<div class="facts"><button class="btn primary" data-act="apvAll">Approve all</button></div>' : '<p class="hint">Nothing waiting.</p>')
@@ -1284,7 +1325,7 @@ function renderChores(){
       var pop = S.pop && S.pop.key === m.id+'|'+c.id && S.pop.n ? '<span class="plus">+'+S.pop.n+'</span>' : '';
       return '<button class="chore'+(done ? ' done' : '')+(wait ? ' wait' : '')+'" role="checkbox" aria-checked="'+done+'" data-act="toggle" data-m="'+m.id+'" data-c="'+c.id+'">'
         + '<span class="box"><svg class="ic s"><use href="#i-check"/></svg></span>'
-        + (iconOf(c) || m.pics ? '<span class="pic" aria-hidden="true">'+(iconOf(c) || '\u2B50')+'</span>' : '')
+        + (iconOf(c) || m.pics ? '<span class="pic" aria-hidden="true">'+glyph(iconOf(c) || '\u2B50')+'</span>' : '')
         + '<span class="ct">'+esc(c.title)+(wait ? '<small>Waiting for a grown-up</small>' : c.rot ? '<small>Your turn '+(c.rot === 'week' ? 'this week' : 'today')+'</small>' : c.weekly ? '<small>Once this week</small>' : c.part === 'am' ? '<small>Morning</small>' : c.part === 'aft' ? '<small>After school</small>' : c.part === 'pm' ? '<small>Bedtime</small>' : '')+'</span>'
         + '<span class="cs">'+(c.stars||1)+starIc()+'</span>'+pop+'</button>';
     }).join('');
@@ -1663,14 +1704,14 @@ function choreRow(c){
   var open = S.ui.editChore === c.id;
   var who = (c.memberIds||[]).map(function(id){ return S.members.filter(function(m){ return m.id === id; })[0]; }).filter(Boolean);
   var sched = c.weekly ? 'Once a week' : (!c.days || c.days.length === 7) ? 'Every day' : sortBy(c.days, function(d){ return (d+6)%7; }).map(function(d){ return DAYS[d]; }).join(' ');
-  var head = '<button class="chead" data-act="editChore" data-id="'+c.id+'" aria-expanded="'+open+'"><b>'+(iconOf(c) ? iconOf(c)+' ' : '')+esc(c.title)+'</b><span>'+esc(sched)+' &middot; '+(c.routine ? partLabel(c.part) : (c.stars||1)+starIc())+'</span>'
+  var head = '<button class="chead" data-act="editChore" data-id="'+c.id+'" aria-expanded="'+open+'"><b>'+(iconOf(c) ? glyph(iconOf(c), 'sm')+' ' : '')+esc(c.title)+'</b><span>'+esc(sched)+' &middot; '+(c.routine ? partLabel(c.part) : (c.stars||1)+starIc())+'</span>'
     + '<span class="whos">'+(who.map(function(m){ return avatar(m,'sm'); }).join('') || '<em>Nobody</em>')+'</span></button>';
   var ed = '';
   if(open){
     var ms = sortBy(S.members, function(m){ return (m.order||0)+'|'+m.name; });
     ed = '<div class="ed"><input class="inp" data-chg="ctitle" data-id="'+c.id+'" value="'+esc(c.title)+'" aria-label="Chore name" maxlength="40">'
-      + '<span class="lbl">Picture</span><div class="icons"><button class="chip'+(!c.icon ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="">Auto '+esc(guessIcon(c.title))+'</button><button class="chip'+(c.icon === 'none' ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="none">None</button>'
-        + ICONS.map(function(x){ return '<button class="chip'+(c.icon === x[0] ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="'+x[0]+'" aria-label="'+esc(x[1].split(' ')[0])+'">'+x[0]+'</button>'; }).join('')+'</div>'
+      + '<span class="lbl">Picture</span><div class="icons"><button class="chip'+(!c.icon ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="">Auto '+glyph(guessIcon(c.title))+'</button><button class="chip'+(c.icon === 'none' ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="none">None</button>'
+        + ICONS.map(function(x){ return '<button class="chip'+(c.icon === x[0] ? ' on' : '')+'" data-act="choreIcon" data-id="'+c.id+'" data-v="'+x[0]+'" aria-label="'+esc(x[1].split(' ')[0])+'">'+glyph(x[0])+'</button>'; }).join('')+'</div>'
       + (c.routine
         ? '<span class="lbl">Part of the day</span><div class="chips">'+[['am','Morning'],['aft','After school'],['pm','Bedtime']].map(function(x){ return '<button class="chip'+((c.part || 'am') === x[0] ? ' on' : '')+'" data-act="chorePart" data-id="'+c.id+'" data-v="'+x[0]+'">'+x[1]+'</button>'; }).join('')+'<button class="chip" data-act="choreTwice" data-id="'+c.id+'">Do it morning and bedtime</button><button class="chip" data-act="toChore" data-id="'+c.id+'">Make it a chore with stars</button></div>'
         : '<div class="chips"><button class="chip" data-act="toRoutine" data-id="'+c.id+'">Move to Routines (no stars)</button></div>')
