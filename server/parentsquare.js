@@ -297,7 +297,7 @@ function create(o) {
       const html = await getPage(formPage);
       const token = html ? csrf(html) : '';
       if (!token) throw new Error('ParentSquare did not give a form to send with');
-      const form = new URLSearchParams({ utf8: '✓', authenticity_token: token, message: text });
+      const form = new URLSearchParams({ utf8: '\u2713', authenticity_token: token, message: text });
       let path;
       if (thread) path = '/users/' + uid + '/chats/' + thread + '/messages';
       else {
