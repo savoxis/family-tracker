@@ -16,3 +16,13 @@ Target is the UnRAID host in the user env vars `UNRAID_HOST`, `UNRAID_USER`, `UN
 4. Data at `/mnt/user/appdata/kitchen-board`, run as `--user 99:100` (UnRAID appdata is nobody:users, the image defaults to uid 1000 and cannot write there). Pick a free host port, 8080 internal.
 5. Verify: `curl http://<host>:<port>/api/health` and `/api/state`, then restart the container and confirm data survives.
 6. The user adds the Nginx Proxy Manager and DNS entries. Tell them the host, port and which access rules you recommend.
+
+## Working together (chat Claude and the coding agent)
+
+Two Claudes touch this repo: a chat session that designs and edits `web/index.html`, and this coding agent that owns the server, Android build, CI and the UnRAID deploy.
+
+- Always `git pull --ff-only` before starting, and again before pushing. Small commits, clear messages, no force pushes.
+- The coding agent has direct access to the UnRAID host and the container. The chat session does not and should not try.
+- Live board: https://family.awesomazing.com (container `kitchen-board`). Nginx Proxy Manager restricts it to the home LAN, so it is not reachable from cloud sessions. Verify from inside the LAN or on the host with `curl http://<host>:<port>/api/health`.
+- The repo is public. Never commit family names, chores, seed data, backups or credentials.
+- After a change to `web/`, the coding agent redeploys. The chat session says so in the commit message when a redeploy is needed.
