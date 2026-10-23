@@ -51,6 +51,12 @@
  * from Setup is checked here, not in the page: 5 wrong tries lock it for 10 minutes, PS_SEND_MAX (5) caps
  * messages per hour, and only teachers the server found itself can be written to.
  *
+ * School lunch menu (needs GEMINI_API_KEY): MENU_PAGE is the district's menu page (several pages can be listed,
+ * separated by commas, such as the schools' own sites). Its monthly elementary menu PDF
+ * (MENU_MATCH, default "elementary", picks which file) is read once by Gemini, each school day's lunch goes on the
+ * calendar, No school days are marked, and the Food card shows today's lunch on school days. MENU_HOURS (6) is how
+ * often the page is checked, MENU_LABEL names the calendar source.
+ *
  * Reading a conversation: POST /api/school-thread {sid, chat, pin} returns the messages of a conversation
  * the server listed, after the same PIN check. The text is returned and never stored. Opening a
  * conversation marks it read on ParentSquare.
@@ -78,6 +84,7 @@ const keepsync = require('./keepsync');
 const sms = require('./sms');
 const parentsquare = require('./parentsquare');
 const gemini = require('./gemini');
+const menu = require('./menu');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -385,6 +392,48 @@ function addFlyerEvents(docId, doc, r) {
   return n;
 }
 
+// The school lunch menu: each school day's lunch goes on the calendar (and No school days are marked), and the
+// per-day menu is kept in the school collection for the Food card. Both are replaced when the district updates a menu.
+function applyMenu(m) {
+  const col = state.data.school, evs = state.data.events;
+  const label = process.env.MENU_LABEL || 'School lunch';
+  const always = m.everyday || { breakfast: [], lunch: [] };
+  const dates = [...m.days.keys()].sort(), first = dates[0];
+  let changed = 0;
+  const put = (coll, id, doc) => { if (JSON.stringify(coll[id]) !== JSON.stringify(doc)) { coll[id] = doc; changed++; } };
+  const clipTo = (s, n) => (s.length > n ? s.slice(0, n - 3).trim() + '...' : s);
+  for (const [date, d] of m.days) {
+    put(col, 'menu-' + date, { src: 'menu', kind: 'menu', date, noSchool: d.noSchool, note: d.note, breakfast: d.breakfast, lunch: d.lunch });
+    if (d.noSchool) {
+      put(evs, 'menu-' + date, { title: clipTo('No school' + (d.note ? ': ' + d.note : ''), 80), allDay: true, sd: date, ed: date, st: '', et: '', loc: '', note: '', who: '', src: 'menu', cal: label, source: 'menu', mk: 'noschool' });
+    } else if (d.lunch.length) {
+      const note = 'Lunch: ' + d.lunch.join(' / ') + (always.lunch.length ? '. Always available: ' + always.lunch.join(', ') : '')
+        + (d.breakfast.length ? '. Breakfast: ' + d.breakfast.join(' / ') : '');
+      put(evs, 'menu-' + date, { title: clipTo('Lunch: ' + d.lunch.join(' / '), 90), allDay: true, sd: date, ed: date, st: '', et: '', loc: '', note, who: '', src: 'menu', cal: label, source: 'menu', mk: 'lunch' });
+    } else if (evs['menu-' + date]) { delete evs['menu-' + date]; changed++; }
+  }
+  put(col, 'menu-always', { src: 'menu', kind: 'menuAlways', lunch: always.lunch, breakfast: always.breakfast });
+  // a day the district dropped from an updated menu goes away, but days before the menu's first day are history and stay
+  for (const id of Object.keys(col)) { const e = col[id]; if (e && e.kind === 'menu' && e.date >= first && !m.days.has(e.date)) { delete col[id]; changed++; } }
+  for (const id of Object.keys(evs)) { const e = evs[id]; if (e && e.src === 'menu' && e.sd >= first && !m.days.has(e.sd)) { delete evs[id]; changed++; } }
+  if (changed) {
+    state.rev += 1;
+    persist().catch((e) => console.error('Could not save the lunch menu: ' + e.message));
+    console.log('Lunch menu: ' + m.days.size + ' days, ' + changed + ' changed');
+  }
+}
+
+function startMenu() {
+  const poller = menu.create({
+    pages: process.env.MENU_PAGE.split(/[,\s]+/).filter((u) => /^https?:\/\//i.test(u)), match: process.env.MENU_MATCH || undefined, gem, file: path.join(DATA_DIR, 'menu-cache.json'),
+    onData: applyMenu, log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
+  });
+  const run = () => poller.poll().catch((e) => console.error('Lunch menu check failed: ' + (e.name === 'TimeoutError' ? 'timeout' : e.message)));
+  console.log('Lunch menu on, watching ' + process.env.MENU_PAGE.split(/[,\s]+/).filter(Boolean).map((u) => { try { return new URL(u).host; } catch (e) { return '?'; } }).join(', '));
+  setTimeout(run, process.env.MENU_DELAY_MS ? parseInt(process.env.MENU_DELAY_MS, 10) : 15000).unref();
+  setInterval(run, Math.max(1000, Math.round(parseFloat(process.env.MENU_HOURS || '6') * 3600 * 1000) || 21600000)).unref();
+}
+
 function startGemini() {
   gem = gemini.create({
     key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || undefined, base: process.env.GEMINI_BASE || undefined, tz: smsTz(),
@@ -594,6 +643,7 @@ function start() {
     if (KEEP_ON) startKeep();
     if (SMS_ON) startSms();
     if (process.env.GEMINI_API_KEY) startGemini();
+    if (gem && process.env.MENU_PAGE) startMenu();
     if (process.env.PARENTSQUARE_USER && process.env.PARENTSQUARE_PASSWORD && process.env.PS_SCHOOLS) startParentSquare();
     dropOrphanCalendarEvents();
     if (ICS_FEEDS.length) {

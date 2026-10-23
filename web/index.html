@@ -952,7 +952,7 @@ function goalTotals(g){
 function upcoming(){
   var a = addDays(new Date(), 1), b = addDays(new Date(), 60), todayK = dkey(new Date()), out = [];
   localEvs(a, b).forEach(function(e){
-    if(!e.allDay || e.sk <= todayK) return;
+    if(!e.allDay || e.sk <= todayK || e.mk) return; // the daily school lunch and the no-school Fridays are not countdowns
     var n = Math.round((parseKey(e.sk) - parseKey(todayK)) / 86400000);
     out.push({n:n, e:e});
   });
@@ -1309,11 +1309,27 @@ function renderChores(){
 }
 
 /* ---------- render: today + food (the small side column) ---------- */
+/* the school lunch for today (or tomorrow, once today's lunch is over), from the menu the server read */
+function menuDoc(dk){ return S.school.filter(function(d){ return d.kind === 'menu' && d.date === dk; })[0] || null; }
+function lunchBlock(label, d, always){
+  return '<small class="k" style="margin-top:.3rem">'+label+'</small><div class="gl">'+d.lunch.map(function(x){ return '<span>'+esc(x)+'</span>'; }).join('')+'</div>'
+    + (always && always.lunch && always.lunch.length ? '<p class="none" style="margin:.15rem 0 0">Always: '+esc(always.lunch.join(', '))+'</p>' : '');
+}
+function schoolLunchHtml(now){
+  var td = menuDoc(dkey(now)), tm = menuDoc(dkey(addDays(now, 1)));
+  var always = S.school.filter(function(d){ return d.kind === 'menuAlways'; })[0];
+  var after = now.getHours() * 60 + now.getMinutes() >= 13 * 60 + 30; // after about 1:30 pm today's lunch is eaten
+  var goodTm = tm && !tm.noSchool && tm.lunch.length;
+  if(td && td.noSchool) return '<small class="k" style="margin-top:.3rem">School</small><p class="none" style="margin:0"><b>No school today</b>'+(td.note ? ' ('+esc(td.note)+')' : '')+'</p>'+(goodTm ? lunchBlock('School lunch tomorrow', tm, always) : '');
+  if(td && td.lunch.length && !(after && goodTm)) return lunchBlock('School lunch today', td, always);
+  if(goodTm && after) return lunchBlock('School lunch tomorrow', tm, always);
+  return '';
+}
 function renderSide(){
   var el = $('#side');
   if(!S.ready){ setHtml(el, ''); return; }
   var now = new Date(), t0 = addDays(now, 0), tk = dkey(now), tm = addDays(now, 1), tmk = dkey(tm);
-  var evs = localEvs(t0, addDays(t0, 2));
+  var evs = localEvs(t0, addDays(t0, 2)).filter(function(e){ return e.mk !== 'lunch'; }); // lunch shows on the Food card instead
   S.sideEvs = [];
   function pick(dk){
     return evs.filter(function(e){ return e.allDay ? (e.sk <= dk && dk < e.ek) : e.sk === dk; }).sort(function(a, b){
@@ -1340,6 +1356,7 @@ function renderSide(){
     + '</section>'
     + '<section class="sc"><div class="sc-h"><h3>Food</h3><button class="btn" data-act="openGroc"><svg class="ic s"><use href="#i-cart"/></svg>List'+(gs.length ? ' ('+gs.length+')' : '')+'</button></div>'
     + dn(tk, 'Dinner tonight', '') + dn(tmk, 'Tomorrow', ' sm')
+    + schoolLunchHtml(now)
     + '<small class="k" style="margin-top:.3rem">Need from the store</small>'
     + (gl ? '<div class="gl">'+gl+'</div>' : '<p class="none">Nothing on the list.</p>')
     + '</section>';
@@ -1401,7 +1418,7 @@ function activityHtml(mid){
 }
 /* Where an event came from: typed in on this board, or synced from Google, a school or another calendar feed. */
 function sourceLabel(e){
-  var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source === 'flyer' ? 'A school flyer, read by AI' : e.source ? 'Calendar feed' : 'This board';
+  var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source === 'flyer' ? 'A school flyer, read by AI' : e.source === 'menu' ? 'The school lunch menu' : e.source ? 'Calendar feed' : 'This board';
   return s + (e.source && e.cal ? ' ('+e.cal+')' : '');
 }
 /* ---------- school: ParentSquare posts and unread messages, filled in by the server ---------- */
@@ -1673,7 +1690,7 @@ var REPS = [['','Never'],['daily','Every day'],['weekdays','Weekdays'],['weekly'
 function repLabel(r){ var x = REPS.filter(function(y){ return y[0] === r; })[0]; return x ? x[1] : ''; }
 function mkOcc(d, dk){
   var m = S.members.filter(function(x){ return x.id === d.who; })[0];
-  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk, source:d.source || '', cal:d.cal || '', note:d.note || ''};
+  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk, source:d.source || '', cal:d.cal || '', note:d.note || '', mk:d.mk || ''};
   var span = Math.max(0, Math.round((parseKey(d.ed || d.sd) - parseKey(d.sd)) / 864e5));
   if(d.allDay){ base.allDay = true; base.sk = dk; base.ek = dkey(addDays(parseKey(dk), span + 1)); return base; }
   var st = new Date(dk+'T'+(d.st || '09:00')+':00'); if(isNaN(st.getTime())) return null;

@@ -67,6 +67,11 @@ async function readPost(o, post, today) {
     const im = await fetchImage(u);
     if (im) parts.push({ inline_data: { mime_type: im.mime, data: im.data } });
   }
+  return clean(await generate(o, parts), today);
+}
+
+// One request to Gemini, the answer as text. The key goes in a header and nowhere else.
+async function generate(o, parts) {
   const res = await fetch((o.base || BASE) + '/models/' + o.model + ':generateContent', {
     method: 'POST', signal: AbortSignal.timeout(45000),
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': o.key },
@@ -76,8 +81,35 @@ async function readPost(o, post, today) {
   if (!res.ok) throw new Error('Gemini HTTP ' + res.status);
   const j = await res.json().catch(() => ({}));
   const text = (((j.candidates || [])[0] || {}).content || {}).parts;
-  const out = clean((text || []).map((p) => p.text || '').join(''), today);
-  return out;
+  return (text || []).map((p) => p.text || '').join('');
+}
+
+const MENU_PROMPT = (today) => 'This is one month of a school lunch menu, laid out as a calendar. Today is ' + today + '. '
+  + 'Reply with JSON only, in this shape: {"month": "YYYY-MM", "everyday": {"breakfast": [items offered every day], "lunch": [items offered every day]}, '
+  + '"days": [{"date": "YYYY-MM-DD", "noSchool": true or false, "note": "", "breakfast": [items], "lunch": [items]}]}. '
+  + 'Include every school day the calendar shows. A day marked no school has noSchool true and empty lists. '
+  + 'Each item is one short menu choice as printed, with obvious typos fixed, for example "Chicken Tenders w/fries". '
+  + 'Use only what the menu says. Do not invent days or items.';
+
+// Makes the model's menu answer safe to store: real dates in one month, short lists of short items.
+function cleanMenu(raw, today) {
+  let j;
+  try { j = typeof raw === 'string' ? JSON.parse(raw.replace(/^```(?:json)?\s*|\s*```$/g, '')) : raw; } catch (e) { return null; }
+  if (!j || typeof j !== 'object' || !Array.isArray(j.days)) return null;
+  const t0 = Date.parse(today + 'T00:00:00Z'), items = (a) => (Array.isArray(a) ? a : []).map((x) => clip(x, 70)).filter(Boolean).slice(0, 8);
+  const seen = new Set(), days = [];
+  for (const d of j.days) {
+    const date = String((d && d.date) || '');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || seen.has(date)) continue;
+    const t = Date.parse(date + 'T00:00:00Z');
+    if (isNaN(t) || t < t0 - 60 * 864e5 || t > t0 + 75 * 864e5) continue;
+    seen.add(date);
+    const no = !!d.noSchool;
+    days.push({ date, noSchool: no, note: clip(d.note, 80), breakfast: no ? [] : items(d.breakfast), lunch: no ? [] : items(d.lunch) });
+  }
+  if (days.filter((d) => !d.noSchool && d.lunch.length).length < 3) return null; // too little to be a real menu
+  const ev = j.everyday && typeof j.everyday === 'object' ? j.everyday : {};
+  return { month: /^\d{4}-\d{2}$/.test(String(j.month || '')) ? j.month : days[0].date.slice(0, 7), everyday: { breakfast: items(ev.breakfast), lunch: items(ev.lunch) }, days: days.sort((a, b) => (a.date < b.date ? -1 : 1)) };
 }
 
 function create(o) {
@@ -139,7 +171,24 @@ function create(o) {
     } finally { running = false; }
   }
 
-  return { offer, cached, stats: () => ({ used: st.used, day: st.day, stop: st.stop, read: Object.keys(st.posts).length, waiting: queue.size }) };
+  // Reads a menu PDF. It may go a little past the daily cap for posts (the cap is below the real allowance on purpose),
+  // since one menu a month matters more than one more post.
+  async function readMenu(buf) {
+    const today = dayKey(now(), tz);
+    if (st.day !== today) { st.day = today; st.used = 0; st.stop = false; }
+    if (st.stop || st.used >= dailyMax + 3) throw Object.assign(new Error('the Gemini allowance for today is used up'), { quota: true });
+    if (!buf || !buf.length || buf.length > 8 * 1024 * 1024) throw new Error('the menu file is empty or too large');
+    st.used += 1; save();
+    try {
+      const text = await generate({ key: o.key, model, base: o.base }, [{ text: MENU_PROMPT(today) }, { inline_data: { mime_type: 'application/pdf', data: Buffer.from(buf).toString('base64') } }]);
+      const r = cleanMenu(text, today);
+      if (!r) throw new Error('that did not look like a menu');
+      log('Gemini: read a lunch menu (' + r.days.length + ' days), ' + st.used + ' used today');
+      return r;
+    } catch (e) { if (e.quota) { st.stop = true; save(); } throw e; }
+  }
+
+  return { offer, cached, readMenu, stats: () => ({ used: st.used, day: st.day, stop: st.stop, read: Object.keys(st.posts).length, waiting: queue.size }) };
 }
 
-module.exports = { create, clean, DEFAULT_MODEL };
+module.exports = { create, clean, cleanMenu, DEFAULT_MODEL };
