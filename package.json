@@ -5,7 +5,7 @@
   "description": "Kitchen Board: touch-first family chores, stars, calendar, dinner and groceries. Static web app, tiny Node server, Android wrapper.",
   "scripts": {
     "start": "node server/server.js",
-    "test": "node --test server/server.test.js server/ics.test.js server/keepsync.test.js"
+    "test": "node --test server/server.test.js server/ics.test.js server/keepsync.test.js server/sms.test.js"
   },
   "engines": { "node": ">=18" }
 }

@@ -28,10 +28,16 @@
  * KEEP_HEADERS names category headers that have no items yet (comma separated). KEEP_DRYRUN=1
  * only logs what would change. The token is a secret and is never logged.
  *
+ * Text alerts to the parents (Textbelt, see sms.js): set TEXTBELT_KEY and SMS_TO (phone numbers,
+ * comma separated). Texts go out when a chore needs approval and when a reward is cashed in. Set
+ * SMS_REMIND_AT=HH:MM (board time) for a daily "chores left" nudge. SMS_DAILY_MAX (12) caps
+ * texts per day, SMS_DRYRUN=1 only logs. The key and numbers are secrets and are never logged in full.
+ *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
  *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
- *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN
+ *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN,
+ *      TEXTBELT_KEY, SMS_TO, SMS_REMIND_AT, SMS_DAILY_MAX (12), SMS_DRYRUN
  */
 const http = require('http');
 const fs = require('fs');
@@ -39,6 +45,7 @@ const path = require('path');
 const ics = require('./ics');
 const { Keep } = require('./keep');
 const keepsync = require('./keepsync');
+const sms = require('./sms');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -61,6 +68,9 @@ const ICS_FEEDS = (process.env.ICS_URLS || '').split(/[\r\n,]+/).map((s) => s.tr
 const KEEP_MS = Math.max(1000, Math.round(parseFloat(process.env.KEEP_MINUTES || '2') * 60 * 1000) || 120000);
 const KEEP_ON = !!(process.env.KEEP_EMAIL && process.env.KEEP_MASTER_TOKEN && process.env.KEEP_LIST);
 let keepSync = null;
+const SMS_TO = (process.env.SMS_TO || '').split(/[,;\r\n]+/).map((s) => s.replace(/\D/g, '')).filter((s) => s.length >= 10 && s.length <= 11);
+const SMS_ON = !!(process.env.TEXTBELT_KEY && SMS_TO.length);
+let smsOut = null;
 const MAX_BODY = 256 * 1024;
 const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -222,6 +232,54 @@ function startKeep() {
   setInterval(keepSync.run, KEEP_MS).unref();
 }
 
+/* ---------- text alerts to the parents ---------- */
+function smsTz() {
+  const tz = process.env.BOARD_TZ || process.env.TZ || 'UTC';
+  try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch (e) { return 'UTC'; }
+}
+
+function smsLedger(before, after) {
+  for (const ev of sms.ledgerEvents(before, after)) {
+    const m = state.data.members[ev.mid];
+    const who = (m && m.name) || 'Someone';
+    if (ev.kind === 'approve') {
+      const c = state.data.chores[ev.key.split('_').slice(1).join('_')];
+      smsOut.notify('approve', who, (c && c.title) || 'a chore');
+    } else {
+      smsOut.notify('cash', who, ev.title + ' (' + ev.cost + (ev.cost === 1 ? ' star)' : ' stars)'));
+    }
+  }
+}
+
+// Once a day, shortly after SMS_REMIND_AT, text who still has chores left. A restart late at night does not resend.
+function smsNudge() {
+  const at = /^(\d{1,2}):(\d{2})$/.exec(process.env.SMS_REMIND_AT || '');
+  if (!at) return;
+  const tz = smsTz(), t = sms.localDay(Date.now(), tz), mins = t.h * 60 + t.mi, from = (+at[1]) * 60 + (+at[2]);
+  if (mins < from || mins > from + 120) return;
+  const file = path.join(DATA_DIR, 'sms-state.json');
+  let last = '';
+  try { last = JSON.parse(fs.readFileSync(file, 'utf8')).reminded; } catch (e) { /* first run */ }
+  if (last === t.key) return;
+  try { fs.writeFileSync(file, JSON.stringify({ reminded: t.key })); } catch (e) { console.error('Could not save text state: ' + e.message); return; }
+  const rows = sms.choresLeft(state.data, Date.now(), tz);
+  if (!rows.length) return;
+  smsOut.send(rows.map((r) => r.name + ' still has ' + r.left.length + (r.left.length === 1 ? ' chore' : ' chores') + ' left today (' + sms.listWords(r.left, 3) + ').').join(' '));
+}
+
+function startSms() {
+  smsOut = sms.create({
+    key: process.env.TEXTBELT_KEY, to: SMS_TO, tz: smsTz(), url: process.env.SMS_URL,
+    dailyMax: parseInt(process.env.SMS_DAILY_MAX || '12', 10) || 12, dryRun: process.env.SMS_DRYRUN === '1',
+    batchMs: process.env.SMS_BATCH_MS ? parseInt(process.env.SMS_BATCH_MS, 10) : undefined,
+    log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
+  });
+  console.log('Text alerts on for ' + SMS_TO.length + ' number' + (SMS_TO.length === 1 ? '' : 's') + (process.env.SMS_DRYRUN === '1' ? ' (dry run)' : '')
+    + (process.env.SMS_REMIND_AT ? ', evening nudge at ' + process.env.SMS_REMIND_AT : ''));
+  smsNudge();
+  setInterval(smsNudge, 60000).unref();
+}
+
 /* ---------- http helpers ---------- */
 function send(res, status, obj, extra) {
   const body = JSON.stringify(obj);
@@ -272,7 +330,9 @@ async function api(req, res, parts) {
       let body;
       try { body = await readBody(req); }
       catch (e) { return send(res, e.status || 400, { error: 'bad body' }, { Connection: 'close' }); }
+      const before = state.data[coll][id];
       state.data[coll][id] = body;
+      if (coll === 'ledger' && smsOut) { try { smsLedger(before, body); } catch (e) { console.error('Text alert failed: ' + e.message); } }
     } else if (req.method === 'DELETE') {
       delete state.data[coll][id];
     } else {
@@ -327,6 +387,7 @@ function start() {
       setInterval(backup, BACKUP_MS).unref();
     }
     if (KEEP_ON) startKeep();
+    if (SMS_ON) startSms();
     dropOrphanCalendarEvents();
     if (ICS_FEEDS.length) {
       console.log('Calendar sync on for: ' + ICS_FEEDS.map((f) => f.label).join(', '));
