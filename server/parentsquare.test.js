@@ -2,6 +2,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const http = require('node:http');
+const { spawn } = require('node:child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 const ps = require('./parentsquare');
 
 // Markup shaped like ParentSquare's posts page.
@@ -14,7 +18,7 @@ const post = (o) => '<div id="feed_' + o.id + '" data-feed-levels="[&quot;' + o.
 
 // A small stand-in for ParentSquare: CSRF token, cookie session, redirect to /signin when signed out.
 function fakeSite() {
-  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {}, paths: [], signups: {}, chats: {} };
+  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {}, paths: [], signups: {}, chats: {}, sent: [], reject: false, wp: [] };
   const page = (id) => {
     const s = site.schools[id] || { name: 'Unknown', posts: [], unread: 0 };
     return '<html><head><title>Posts | ' + s.name + ' | ParentSquare</title></head><body>'
@@ -53,13 +57,28 @@ function fakeSite() {
         if (site.down['su' + x[1]]) { res.statusCode = 500; return res.end('oops'); }
         return res.end(site.signups[x[1]] || '');
       }
-      if ((x = /^\/schools\/(\d+)\/users\/777\/chats$/.exec(req.url))) {
+      if (req.method === 'GET' && (x = /^\/schools\/(\d+)\/users\/777\/chats$/.exec(req.url))) {
         if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
-        return res.end(site.chats[x[1]] || '');
+        return res.end('<meta name="csrf-token" content="CSRF-OK">' + (site.chats[x[1]] || ''));
+      }
+      if ((x = /^\/schools\/(\d+)\/users\/777\/chats\/new\?private=true$/.exec(req.url))) {
+        if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
+        return res.end('<meta name="csrf-token" content="CSRF-OK"><form id="user-chat-form"></form>');
       }
       if (/^\/schools\/(\d+)\/users\/autocomplete\?/.test(req.url)) {
         if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
-        return res.end(JSON.stringify([[{ id: 14347987, name: 'Keli Bruehling', role: ['Teacher', null], is_student: false }, { id: 555, name: 'Keli Bruehling Jr', role: ['Student'], is_student: true }], 2]));
+        const knight = /query=Knight/.test(req.url);
+        return res.end(JSON.stringify([[knight ? { id: 14347788, name: 'Kayla Knight', role: ['Teacher', null], is_student: false }
+          : { id: 14347987, name: 'Keli Bruehling', role: ['Teacher', null], is_student: false }, { id: 555, name: 'Keli Bruehling Jr', role: ['Student'], is_student: true }], 2]));
+      }
+      // sending: a new conversation, or a reply in an existing one
+      if (req.method === 'POST' && ((x = /^\/schools\/(\d+)\/users\/777\/chats$/.exec(req.url)) || (x = /^\/users\/777\/chats\/(\d+)\/messages$/.exec(req.url)))) {
+        const f = Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString()));
+        site.wp.push(req.method + ' ' + req.url);
+        if (!authed || f.authenticity_token !== 'CSRF-OK' || !f.message || site.reject) { res.statusCode = 422; return res.end('nope'); }
+        const isNew = /^\/schools\//.test(req.url);
+        site.sent.push(isNew ? { kind: 'new', sid: x[1], form: f } : { kind: 'reply', chat: x[1], form: f });
+        res.statusCode = 302; res.setHeader('Location', '/schools/1/users/777/chats/' + (isNew ? '99' : x[1])); return res.end();
       }
       res.statusCode = 404; res.end();
     });
@@ -241,6 +260,147 @@ test('a page that cannot be read is skipped, not treated as empty', async () => 
     assert.ok(skip.has('1|signup'), 'sign-ups failed so they must be left alone');
     assert.ok(!skip.has('1|message'));
   } finally { site.srv.close(); }
+});
+
+test('a message to a teacher is a new conversation, or a reply when one exists, with exactly the form ParentSquare expects', async () => {
+  const site = fakeSite();
+  const base = await site.listen();
+  site.schools = { 1: { name: 'Brockway Elementary', unread: 0, posts: [] }, 2: { name: 'McGovern Elementary', unread: 0, posts: [] } };
+  site.chats = { 1: chatItem(11, 'Kayla Knight', 8, 'Thu 10/22/26, 3:05 pm') };
+  const t = mk(site, base, { tz: 'UTC', now: () => NOW, minSendGapMs: 0, teachers: [{ child: 'Bastian', name: 'Keli Bruehling' }, { child: 'Xander', name: 'Kayla Knight' }] });
+  try {
+    const docs = await t.w.poll();
+    assert.strictEqual(docs.get('ps-teacher-2-14347987').canReply, false, 'no conversation with Bruehling yet');
+    assert.strictEqual(docs.get('ps-teacher-1-14347788').canReply, true, 'Knight already has a conversation');
+    // Bastian's teacher: no conversation, so a new direct message
+    const r1 = await t.w.send({ sid: '2', teacherId: '14347987', text: '  Thank you, we will see you Friday.  ' });
+    assert.deepStrictEqual([r1.ok, r1.teacher, r1.replied], [true, 'Keli Bruehling', false]);
+    assert.strictEqual(site.sent[0].kind, 'new');
+    const f = site.sent[0].form;
+    assert.deepStrictEqual([f.institute_id, f.institute_type, f.private, f.users, f.message, f.authenticity_token, f.recipient_data], ['2', 'School', 'true', '14347987', 'Thank you, we will see you Friday.', 'CSRF-OK', '']);
+    // Xander's teacher: reply in the existing conversation
+    const r2 = await t.w.send({ sid: '1', teacherId: '14347788', text: 'Thanks for letting me know.' });
+    assert.strictEqual(r2.replied, true);
+    assert.deepStrictEqual([site.sent[1].kind, site.sent[1].chat, site.sent[1].form.message], ['reply', '11', 'Thanks for letting me know.']);
+    assert.ok(!site.paths.some((p) => /\/chats\/\d+/.test(p) && p.startsWith('GET')), 'a conversation page was opened');
+  } finally { site.srv.close(); }
+});
+
+test('only a teacher the server found can be messaged, empty and huge messages are refused, a refusal is not retried', async () => {
+  const site = fakeSite();
+  const base = await site.listen();
+  site.schools = { 2: { name: 'McGovern Elementary', unread: 0, posts: [] } };
+  const t = mk(site, base, { schools: [{ id: '2', child: 'Bastian' }], tz: 'UTC', minSendGapMs: 0, teachers: [{ child: 'Bastian', name: 'Keli Bruehling' }] });
+  try {
+    await t.w.poll();
+    await assert.rejects(t.w.send({ sid: '2', teacherId: '555', text: 'hello' }), /not available/);
+    await assert.rejects(t.w.send({ sid: '2', teacherId: '999', text: 'hello' }), /not available/);
+    await assert.rejects(t.w.send({ sid: '2', teacherId: '14347987', text: '   ' }), /empty or too long/);
+    await assert.rejects(t.w.send({ sid: '2', teacherId: '14347987', text: 'x'.repeat(1501) }), /empty or too long/);
+    assert.strictEqual(site.wp.length, 0, 'nothing was posted for any of those');
+    site.reject = true;
+    await assert.rejects(t.w.send({ sid: '2', teacherId: '14347987', text: 'hello' }), /did not accept the message/);
+    assert.strictEqual(site.wp.length, 1, 'exactly one attempt, no retry');
+    assert.strictEqual(site.sent.length, 0);
+  } finally { site.srv.close(); }
+});
+
+// The whole server against the stand-in ParentSquare: the PIN gate, the lockout and the hourly cap.
+async function serverWithSite(extraEnv, seed, posts) {
+  const site = fakeSite();
+  const base = await site.listen();
+  site.schools = { 1: { name: 'Brockway Elementary', unread: 0, posts: [] }, 2: { name: 'McGovern Elementary', unread: 0, posts: posts || [] } };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-psmsg-'));
+  if (seed) fs.writeFileSync(path.join(dir, 'board.json'), JSON.stringify({ rev: 1, data: Object.assign({ members: {}, chores: {}, rewards: {}, events: {}, ledger: {}, meals: {}, groceries: {}, notes: {}, config: {}, school: {} }, seed) }));
+  const port = 23000 + Math.floor(Math.random() * 1000);
+  const proc = spawn(process.execPath, [path.join(__dirname, 'server.js')], { env: Object.assign({}, process.env, {
+    PORT: String(port), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), BACKUP_HOURS: '0', PS_BASE: base, PARENTSQUARE_USER: site.user, PARENTSQUARE_PASSWORD: site.pass,
+    PS_SCHOOLS: '1:Xander,2:Bastian', PS_TEACHERS: 'Bastian:Keli Bruehling', PS_LOGIN_GAP_MS: '0', PS_MINUTES: '60', BOARD_TZ: 'UTC' }, extraEnv || {}) });
+  let log = '';
+  proc.stdout.on('data', (d) => { log += d; });
+  proc.stderr.on('data', (d) => { log += d; });
+  const call = (method, p, body) => new Promise((resolve, reject) => {
+    const r = http.request({ host: '127.0.0.1', port, method, path: p, headers: { 'Content-Type': 'application/json' } }, (res) => {
+      const b = []; res.on('data', (x) => b.push(x)); res.on('end', () => { let j = null; try { j = JSON.parse(Buffer.concat(b).toString()); } catch (e) { /* not json */ } resolve({ status: res.statusCode, json: j }); });
+    });
+    r.on('error', reject); if (body !== undefined) r.write(JSON.stringify(body)); r.end();
+  });
+  const until = async (fn) => { for (let i = 0; i < 100; i++) { let v = null; try { v = await fn(); } catch (e) { /* the server is still starting */ } if (v) return v; await new Promise((r) => setTimeout(r, 100)); } return null; };
+  const ready = await until(async () => { const s = (await call('GET', '/api/state')).json; return s && Object.values(s.data.school).some((d) => d.kind === 'teacher'); });
+  const stop = async () => { await new Promise((r) => { proc.on('exit', r); proc.kill('SIGTERM'); }); site.srv.close(); fs.rmSync(dir, { recursive: true, force: true }); };
+  return { site, call, ready, stop, log: () => log };
+}
+
+test('server: messaging needs the PIN, locks after five wrong tries, and only reaches a listed teacher', async () => {
+  const s = await serverWithSite();
+  try {
+    assert.ok(s.ready, 'the teacher was not found: ' + s.log());
+    const body = (o) => Object.assign({ sid: '2', tid: '14347987', text: 'Private words for the teacher', pin: '4321' }, o);
+    assert.strictEqual((await s.call('POST', '/api/school-message', body())).status, 403, 'no PIN set yet');
+    await s.call('PUT', '/api/config/display', { pin: '4321' });
+    assert.strictEqual((await s.call('POST', '/api/school-message', body({ tid: '1234' }))).status, 404, 'a made-up teacher id');
+    assert.strictEqual((await s.call('POST', '/api/school-message', body({ sid: '1' }))).status, 404, 'right id, wrong school');
+    assert.strictEqual((await s.call('POST', '/api/school-message', body({ text: '   ' }))).status, 400);
+    for (let i = 0; i < 5; i++) assert.strictEqual((await s.call('POST', '/api/school-message', body({ pin: '000' + i }))).status, 403);
+    const locked = await s.call('POST', '/api/school-message', body());
+    assert.strictEqual(locked.status, 429, 'even the right PIN is refused during the lockout');
+    assert.strictEqual(s.site.sent.length, 0, 'nothing reached ParentSquare');
+    assert.ok(!s.log().includes('Private words') && !s.log().includes('4321'), 'message or PIN in the log');
+  } finally { await s.stop(); }
+});
+
+test('server: the right PIN sends one message, and the hourly cap holds', async () => {
+  const s = await serverWithSite({ PS_SEND_MAX: '2' });
+  try {
+    assert.ok(s.ready, 'the teacher was not found: ' + s.log());
+    await s.call('PUT', '/api/config/display', { pin: '4321' });
+    const send = (text) => s.call('POST', '/api/school-message', { sid: '2', tid: '14347987', text, pin: '4321' });
+    const r = await send('See you at the conference');
+    assert.deepStrictEqual([r.status, r.json && r.json.ok, r.json && r.json.teacher], [200, true, 'Keli Bruehling']);
+    assert.strictEqual(s.site.sent.length, 1);
+    assert.strictEqual(s.site.sent[0].form.message, 'See you at the conference');
+    assert.strictEqual((await send('A second note')).status, 200);
+    assert.strictEqual((await send('A third note')).status, 429, 'over the hourly cap');
+    assert.strictEqual(s.site.sent.length, 2);
+    assert.ok(!s.log().includes('See you at the conference') && !s.log().includes('4321'), 'message or PIN in the log');
+  } finally { await s.stop(); }
+});
+
+test('server: dates the flyer reader finds go on the calendar in the child color, once, without doubling up', async () => {
+  const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+  let geminiCalls = 0, geminiKey = '';
+  const gem = http.createServer((req, res) => {
+    const b = []; req.on('data', (c) => b.push(c));
+    req.on('end', () => {
+      geminiCalls += 1; geminiKey = req.headers['x-goog-api-key'];
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify({ summary: 'Red Ribbon Week is next week.', action: 'Dress up each day.', events: [
+        { title: 'Mismatch Monday', date: day(3), time: '', details: 'Wear mismatched clothes' },
+        { title: 'Twin Tuesday', date: day(4), time: '', details: 'Dress like a friend' },
+        { title: 'Assembly', date: day(5), time: '08:30', details: '' }] }) }] } }] }));
+    });
+  });
+  await new Promise((r) => gem.listen(0, '127.0.0.1', r));
+  const seed = { members: { m2: { name: 'Bastian', color: '#D9780F', order: 1 } },
+    events: { pre: { title: 'Assembly', allDay: false, sd: day(5), ed: day(5), st: '08:30', et: '09:30', who: '', loc: '' } } };
+  const s = await serverWithSite({ GEMINI_API_KEY: 'gem-secret-key', GEMINI_BASE: 'http://127.0.0.1:' + gem.address().port, GEMINI_DAILY_MAX: '5' }, seed,
+    [{ id: 777, title: 'Red Ribbon Week Next Week', author: 'Ms. Frost', level: 'McGovern Elementary', body: 'Dress up each day. '.repeat(20) }]);
+  try {
+    assert.ok(s.ready, 'server did not start: ' + s.log());
+    const flyer = await (async () => { for (let i = 0; i < 100; i++) { const st = (await s.call('GET', '/api/state')).json; const f = Object.entries(st.data.events).filter(([, e]) => e.src === 'flyer'); if (f.length >= 2) return { st, f }; await new Promise((r) => setTimeout(r, 100)); } return null; })();
+    assert.ok(flyer, 'no flyer events appeared: ' + s.log());
+    const byTitle = Object.fromEntries(flyer.f.map(([, e]) => [e.title, e]));
+    const m = byTitle['Mismatch Monday'];
+    assert.deepStrictEqual([m.sd, m.allDay, m.note, m.who, m.source, m.cal], [day(3), true, 'Wear mismatched clothes', 'm2', 'flyer', 'McGovern Elementary']);
+    assert.strictEqual(byTitle['Twin Tuesday'].note, 'Dress like a friend');
+    assert.strictEqual(flyer.f.length, 2, 'the Assembly was already on the calendar, so it is not doubled up');
+    assert.strictEqual(Object.values(flyer.st.data.events).filter((e) => e.title === 'Assembly').length, 1);
+    const post = Object.values(flyer.st.data.school).find((d) => d.kind === 'post');
+    assert.deepStrictEqual([post.ai.summary, post.ai.events.length, post.body], ['Red Ribbon Week is next week.', 3, undefined]);
+    assert.strictEqual(geminiCalls, 1);
+    assert.strictEqual(geminiKey, 'gem-secret-key');
+    assert.ok(!s.log().includes('gem-secret-key'), 'the Gemini key leaked into the log');
+  } finally { await s.stop(); gem.close(); }
 });
 
 test('sign-in attempts respect the minimum gap', async () => {

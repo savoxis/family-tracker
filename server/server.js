@@ -46,7 +46,18 @@
  * Calendar feeds can be tied to a family member with Label@Member|url (their events then show in
  * that person's color), and every synced event carries a source: google, school or calendar.
  *
+ * Messaging a teacher: POST /api/school-message {sid, tid, text, pin} sends a ParentSquare message to a
+ * teacher named in PS_TEACHERS (a reply in the existing conversation, or a new one). The approval PIN
+ * from Setup is checked here, not in the page: 5 wrong tries lock it for 10 minutes, PS_SEND_MAX (5) caps
+ * messages per hour, and only teachers the server found itself can be written to.
+ *
+ * Flyer reader (see gemini.js): GEMINI_API_KEY turns it on. Each new public school post is read once with
+ * Gemini (text and up to two pictures) for a short summary, what to do or bring, and dates it states.
+ * GEMINI_DAILY_MAX (15) keeps inside the free allowance, GEMINI_MODEL (gemini-flash-latest) picks the model.
+ * Messages are never sent to Gemini. The key is never logged.
+ *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
+ *      GEMINI_API_KEY, GEMINI_DAILY_MAX, GEMINI_MODEL, PS_SEND_MAX,
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
  *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
  *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_TEACHERS, PS_MESSAGE_PREVIEW, PS_MINUTES (15),
@@ -56,11 +67,13 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const ics = require('./ics');
 const { Keep } = require('./keep');
 const keepsync = require('./keepsync');
 const sms = require('./sms');
 const parentsquare = require('./parentsquare');
+const gemini = require('./gemini');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -97,6 +110,8 @@ let keepSync = null;
 const SMS_TO = (process.env.SMS_TO || '').split(/[,;\r\n]+/).map((s) => s.replace(/\D/g, '')).filter((s) => s.length >= 10 && s.length <= 11);
 const SMS_ON = !!(process.env.TEXTBELT_KEY && SMS_TO.length);
 let smsOut = null;
+let psApi = null;
+let gem = null;
 const MAX_BODY = 256 * 1024;
 const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config', 'school'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -316,6 +331,9 @@ function applySchool(docs, okIds, skip) {
   let changed = 0;
   for (const [id, d0] of docs) {
     const d = d0.kind === 'status' ? d0 : Object.assign({}, d0, { child: memberIdByName(d0.childName) });
+    delete d.body; // the post text is only for the flyer reader, it is not kept on the board
+    const ai = gem && d.kind === 'post' ? gem.cached(id) : null;
+    if (ai) d.ai = ai;
     const old = col[id];
     const same = d.kind === 'status' ? !!old && old.ok === d.ok && old.message === d.message : JSON.stringify(old) === JSON.stringify(d);
     if (!same) { col[id] = d; changed++; }
@@ -339,6 +357,47 @@ function applySchool(docs, okIds, skip) {
   const posts = Object.keys(col).filter((id) => col[id] && col[id].kind === 'post').sort((a, b) => String(col[b].at).localeCompare(String(col[a].at)));
   for (const id of posts.slice(60)) { delete col[id]; changed++; }
   if (changed) { state.rev += 1; persist().catch((e) => console.error('Could not save school posts: ' + e.message)); }
+  // The flyer reader looks at public posts it has not read yet, a few a day, newest first.
+  if (gem) gem.offer([...docs].filter(([, d]) => d.kind === 'post').map(([id, d]) => ({ id, title: d.title, author: d.author, body: d.body, snippet: d.snippet, images: d.images, at: d.at })));
+}
+
+// Dates the flyer reader found go on the calendar, once, in the child's color. They are marked as read by AI so they
+// get checked, and an event that is deleted is not put back because a post is only ever read once.
+function addFlyerEvents(docId, doc, r) {
+  const evs = state.data.events;
+  const plusHour = (t) => { const [h, m] = t.split(':').map(Number); return h >= 23 ? '23:59' : String(h + 1).padStart(2, '0') + ':' + String(m).padStart(2, '0'); };
+  let n = 0;
+  (r.events || []).forEach((e, i) => {
+    const id = 'ai-' + docId.replace(/[^A-Za-z0-9]/g, '') + '-' + i;
+    if (evs[id]) return;
+    const t = String(e.title).toLowerCase();
+    // already on the calendar (from the school feed, for example) under much the same name that day
+    const dup = Object.values(evs).some((x) => x && x.sd === e.date && String(x.title || '').length > 2 && (String(x.title).toLowerCase().includes(t) || t.includes(String(x.title).toLowerCase())));
+    if (dup) return;
+    evs[id] = { title: e.title, allDay: !e.time, sd: e.date, ed: e.date, st: e.time, et: e.time ? plusHour(e.time) : '', loc: '', note: e.details || '', who: doc.child || '',
+      src: 'flyer', cal: doc.school || '', source: 'flyer', sid: doc.sid };
+    n++;
+  });
+  return n;
+}
+
+function startGemini() {
+  gem = gemini.create({
+    key: process.env.GEMINI_API_KEY, model: process.env.GEMINI_MODEL || undefined, base: process.env.GEMINI_BASE || undefined, tz: smsTz(),
+    dailyMax: parseInt(process.env.GEMINI_DAILY_MAX || '15', 10) || 15,
+    file: path.join(DATA_DIR, 'ai-cache.json'),
+    onResult: (id, r) => {
+      const doc = state.data.school[id];
+      if (!doc) return;
+      doc.ai = r;
+      const added = addFlyerEvents(id, doc, r);
+      if (added) console.log('Flyer reader: ' + added + ' date' + (added === 1 ? '' : 's') + ' added to the calendar');
+      state.rev += 1;
+      persist().catch((e) => console.error('Could not save a school summary: ' + e.message));
+    },
+    log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
+  });
+  console.log('Flyer reader on (' + (process.env.GEMINI_MODEL || 'gemini-flash-latest') + ', up to ' + (parseInt(process.env.GEMINI_DAILY_MAX || '15', 10) || 15) + ' a day)');
 }
 
 function startParentSquare() {
@@ -354,10 +413,43 @@ function startParentSquare() {
     teachers: (process.env.PS_TEACHERS || '').split(',').map((x) => { const i = x.indexOf(':'); return i > 0 ? { child: x.slice(0, i).trim(), name: x.slice(i + 1).trim() } : null; }).filter((x) => x && x.child && x.name),
     log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
   });
+  psApi = ps;
   const run = () => ps.poll().catch((e) => console.error('ParentSquare poll failed: ' + e.message));
   console.log('ParentSquare on for ' + schools.map((s) => (s.child ? s.child + ' at ' : '') + 'school ' + s.id).join(', '));
   run();
   setInterval(run, Math.max(1000, Math.round(parseFloat(process.env.PS_MINUTES || '15') * 60 * 1000) || 900000)).unref();
+}
+
+/* ---------- messaging a child's teacher, only with the approval PIN ---------- */
+const pinFails = []; // when wrong PINs were tried
+const sentAt = [];   // when messages were sent
+async function schoolMessage(req, res) {
+  if (req.method !== 'POST') return send(res, 405, { error: 'method' });
+  if (!psApi) return send(res, 503, { error: 'Messaging is not set up' });
+  let b;
+  try { b = await readBody(req); } catch (e) { return send(res, e.status || 400, { error: 'bad body' }, { Connection: 'close' }); }
+  const t = Date.now();
+  while (pinFails.length && t - pinFails[0] > 600000) pinFails.shift();
+  while (sentAt.length && t - sentAt[0] > 3600000) sentAt.shift();
+  const pin = String((((state.data.config || {}).display) || {}).pin || '');
+  if (!pin) return send(res, 403, { error: 'Set an approval PIN in Setup first' });
+  if (pinFails.length >= 5) return send(res, 429, { error: 'Too many wrong PINs. Try again in a few minutes' });
+  const given = Buffer.from(String(b.pin || '')), want = Buffer.from(pin);
+  if (!(given.length === want.length && crypto.timingSafeEqual(given, want))) { pinFails.push(t); return send(res, 403, { error: 'Wrong PIN' }); }
+  // Only a teacher the server itself found and listed can be written to, never an id the page makes up.
+  const tc = Object.values(state.data.school).find((d) => d && d.kind === 'teacher' && d.sid === String(b.sid) && d.tid === String(b.tid));
+  if (!tc) return send(res, 404, { error: 'That teacher is not available to message' });
+  const text = String(b.text || '').trim();
+  if (!text || text.length > 1500) return send(res, 400, { error: 'Write a message first (up to 1500 characters)' });
+  if (sentAt.length >= (parseInt(process.env.PS_SEND_MAX || '5', 10) || 5)) return send(res, 429, { error: 'Message limit for this hour reached' });
+  sentAt.push(t);
+  try {
+    const r = await psApi.send({ sid: tc.sid, teacherId: tc.tid, text });
+    setTimeout(() => psApi.poll().catch(() => {}), 4000).unref();
+    return send(res, 200, { ok: true, teacher: r.teacher, replied: r.replied });
+  } catch (e) {
+    return send(res, 502, { error: e.message });
+  }
 }
 
 /* ---------- http helpers ---------- */
@@ -396,6 +488,7 @@ function readBody(req) {
 
 async function api(req, res, parts) {
   if (parts.length === 1 && parts[0] === 'health') return send(res, 200, { ok: true });
+  if (parts.length === 1 && parts[0] === 'school-message') return schoolMessage(req, res);
   if (parts.length === 1 && parts[0] === 'state') {
     if (req.method !== 'GET') return send(res, 405, { error: 'method' });
     return send(res, 200, state);
@@ -468,6 +561,7 @@ function start() {
     }
     if (KEEP_ON) startKeep();
     if (SMS_ON) startSms();
+    if (process.env.GEMINI_API_KEY) startGemini();
     if (process.env.PARENTSQUARE_USER && process.env.PARENTSQUARE_PASSWORD && process.env.PS_SCHOOLS) startParentSquare();
     dropOrphanCalendarEvents();
     if (ICS_FEEDS.length) {

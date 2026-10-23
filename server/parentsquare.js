@@ -63,7 +63,8 @@ function parseFeed(html) {
     const body = /class="description[^"]*"[^>]*>([\s\S]{0,7000})/.exec(chunk);
     posts.push({
       id: id[1], title: decode(t[1]).trim(), author: a ? decode(a[1]).trim() : '', level, at,
-      pinned: head.indexOf('fa-thumb-tack') > -1, chips, eventAt, snippet: body ? clip(text(body[1]), 240) : '', images: images(chunk)
+      pinned: head.indexOf('fa-thumb-tack') > -1, chips, eventAt, snippet: body ? clip(text(body[1]), 240) : '', images: images(chunk),
+      body: body ? clip(text(body[1]), 2500) : ''
     });
   }
   const u = /Unread Messages:<\/span>\s*(\d+)/.exec(html);
@@ -156,6 +157,9 @@ function appointmentTitle(title) {
   return m ? ((m[1] || 'Appointment').trim() + ' with ' + m[2].trim()) : (String(title || '').trim() || 'Appointment');
 }
 
+// The form token any ParentSquare page carries in its head (or in a form).
+const csrf = (html) => { const m = /<meta name="csrf-token" content="([^"]+)"/.exec(html) || /name="authenticity_token" value="([^"]+)"/.exec(html); return m ? decode(m[1]) : ''; };
+
 function create(o) {
   const base = (o.base || BASE).replace(/\/$/, '');
   const log = o.log || (() => {});
@@ -165,6 +169,8 @@ function create(o) {
   const now = o.now || Date.now;
   const uids = new Map();            // school id -> this login's user id there
   const teachers = new Map();        // 'sid|name' -> {id, name, role, sid}
+  const threads = new Map();         // 'sid|name' -> conversation id, so a message can be a reply in the existing thread
+  let lastSend = 0, sending = Promise.resolve();
 
   const cookieHeader = () => [...jar].map(([k, v]) => k + '=' + v).join('; ');
   function eat(res) {
@@ -270,6 +276,46 @@ function create(o) {
     return t;
   }
 
+  // Sends one message to one teacher: a reply in the existing conversation if there is one, otherwise a new direct
+  // message. Only a teacher that findTeacher() returned can be written to, so the board cannot message anyone else.
+  // Exactly one attempt, never retried, so a message cannot go out twice by accident.
+  function send(a) {
+    const run = async () => {
+      if (stopped) throw new Error('ParentSquare sign-in is not working');
+      const s = schools.find((x) => x.id === a.sid);
+      const t = [...teachers.values()].find((x) => x.sid === a.sid && x.id === String(a.teacherId));
+      const uid = uids.get(a.sid);
+      if (!s || !t || !uid) throw new Error('that teacher is not available to message');
+      const text = String(a.text || '').trim();
+      if (!text || text.length > 1500) throw new Error('the message is empty or too long');
+      const wait = (o.minSendGapMs === undefined ? 5000 : o.minSendGapMs) - (now() - lastSend);
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+      lastSend = now();
+      if (!jar.size && !(await login())) throw new Error('could not sign in to ParentSquare');
+      const thread = threads.get(a.sid + '|' + t.name.toLowerCase());
+      const formPage = thread ? '/schools/' + a.sid + '/users/' + uid + '/chats' : '/schools/' + a.sid + '/users/' + uid + '/chats/new?private=true';
+      const html = await getPage(formPage);
+      const token = html ? csrf(html) : '';
+      if (!token) throw new Error('ParentSquare did not give a form to send with');
+      const form = new URLSearchParams({ utf8: '✓', authenticity_token: token, message: text });
+      let path;
+      if (thread) path = '/users/' + uid + '/chats/' + thread + '/messages';
+      else {
+        path = '/schools/' + a.sid + '/users/' + uid + '/chats';
+        form.set('institute_id', a.sid); form.set('institute_type', 'School'); form.set('private', 'true'); form.set('users', t.id); form.set('recipient_data', '');
+      }
+      const res = await req(path, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', Origin: base, Referer: base + formPage }, body: form.toString() });
+      const where = res.headers.get('location') || '';
+      const accepted = res.status >= 300 && res.status < 400 ? !/\/signin|\/sessions|\/new/.test(where) : res.status === 200 || res.status === 201 || res.status === 204;
+      if (!accepted) throw new Error('ParentSquare did not accept the message (HTTP ' + res.status + '). Check ParentSquare before trying again');
+      log('ParentSquare: message sent for ' + (s.child || 'a child'));
+      return { ok: true, teacher: t.name, replied: !!thread };
+    };
+    const p = sending.then(run, run);
+    sending = p.catch(() => {});
+    return p;
+  }
+
   // One look at every school. Hands o.onData(docs, okSchoolIds) the documents for the School view.
   // A school that could not be read is left alone, so its last known posts stay on the board.
   async function poll() {
@@ -292,7 +338,8 @@ function create(o) {
             src: 'parentsquare', kind: 'post', sid: s.id, title: p.title, author: p.author, school: district ? p.level : (s.name || ''),
             level: district ? 'district' : sameAsSchool ? 'school' : 'class', group: district || sameAsSchool ? '' : p.level,
             childName: district ? '' : (s.child || ''), at: p.at, pinned: p.pinned, chips: p.chips,
-            eventAt: p.eventAt, snippet: p.snippet, images: p.images, url: base + '/feeds/' + p.id
+            eventAt: p.eventAt, snippet: p.snippet, images: p.images, url: base + '/feeds/' + p.id,
+            body: p.body // only passed along for the flyer reader, the server does not store it
           });
         }
         docs.set('ps-unread-' + s.id, { src: 'parentsquare', kind: 'unread', sid: s.id, n: r.unread, school: s.name || '', childName: s.child || '', url: base + '/schools/' + s.id + '/feeds' });
@@ -308,11 +355,12 @@ function create(o) {
           docs.set('ps-chat-' + c.id, { src: 'parentsquare', kind: 'message', sid: s.id, name: c.name, count: c.count, at: c.at, unread: i < r.unread, preview: c.preview,
             school: s.name || '', childName: s.child || '', url: base + '/schools/' + s.id + '/users/' + (uids.get(s.id) || '') + '/chats/' + c.id });
         });
+        for (const c of (r.chats || [])) threads.set(s.id + '|' + String(c.name).toLowerCase(), c.id);
         for (const tn of (o.teachers || []).filter((x) => x.child && x.child.toLowerCase() === String(s.child || '').toLowerCase())) {
           let t = null;
           try { t = await findTeacher(s, tn.name); } catch (e) { log('ParentSquare teacher lookup failed: ' + (e.name === 'TimeoutError' ? 'timeout' : 'network'), true); }
           if (!t) skip.add(s.id + '|teacher');
-          if (t) docs.set('ps-teacher-' + s.id + '-' + t.id, { src: 'parentsquare', kind: 'teacher', sid: s.id, tid: t.id, name: t.name, role: t.role, school: s.name || '', childName: s.child || '' });
+          if (t) docs.set('ps-teacher-' + s.id + '-' + t.id, { src: 'parentsquare', kind: 'teacher', sid: s.id, tid: t.id, name: t.name, role: t.role, school: s.name || '', childName: s.child || '', canReply: threads.has(s.id + '|' + t.name.toLowerCase()) });
         }
       }
     }
@@ -323,7 +371,7 @@ function create(o) {
     return docs;
   }
 
-  return { poll, login, parseFeed };
+  return { poll, login, parseFeed, send };
 }
 
 module.exports = { create, parseFeed, parseSignups, parseChats, appointmentTitle };

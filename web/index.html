@@ -108,6 +108,10 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .sp .tags{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem}
 .sp .tag{font-size:.82rem;font-weight:700;padding:.1rem .65rem;border-radius:1rem;background:var(--star-soft);color:var(--star-ink)}
 .sp p{margin:.45rem 0 0;color:var(--ink2);font-size:.98rem;line-height:1.35}
+.sp.cmp textarea{width:100%;margin:.4rem 0;resize:vertical}
+.sp .err{margin:.4rem 0 0;color:var(--bad);font-weight:700}
+.sp .ai{display:block;margin-top:.3rem;font-size:.98rem;line-height:1.3}
+.sp .ai span{display:block}
 .sp a{display:inline-block;margin-top:.45rem;font-weight:700}
 .sp a.sp-m{display:block;margin:0;font-weight:inherit;color:inherit;text-decoration:none}
 .sp a.sp-m b{display:block;font-size:1.08rem}
@@ -376,6 +380,17 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
 .tm{display:flex;flex-direction:column;gap:.6rem}
 .tm .ev{cursor:default}
 .wx{display:flex;align-items:center;gap:.7rem;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.35rem 1rem;box-shadow:var(--shadow);min-width:0}
+.wxweek{flex:none;display:flex;align-items:stretch;gap:.6rem;min-width:0;overflow-x:auto}
+.wxweek .wk-s{flex:1.6;min-width:12rem;display:flex;flex-direction:column;justify-content:center;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.4rem 1rem;box-shadow:var(--shadow)}
+.wxweek .wk-s small{font-size:.75rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--star-ink)}
+.wxweek .wk-s b{font-size:1rem;font-weight:700;line-height:1.2}
+.wxweek .wk-d{flex:1;min-width:4.4rem;display:flex;flex-direction:column;align-items:center;gap:.05rem;background:var(--panel);border:1px solid var(--line);border-radius:1.1rem;padding:.3rem .4rem;box-shadow:var(--shadow);text-align:center}
+.wxweek .wk-d.today{border-color:var(--accent)}
+.wxweek .wk-d small{font-weight:800;font-size:.78rem;color:var(--ink2);text-transform:uppercase;letter-spacing:.06em}
+.wxweek .wk-d .g{font-size:1.45rem;line-height:1.15}
+.wxweek .wk-d b{font-size:1rem;font-weight:700}
+.wxweek .wk-d .lo{color:var(--ink2);font-weight:600}
+.wxweek .wk-d em{font-style:normal;font-size:.76rem;font-weight:800;color:var(--accent)}
 .wx .t{font-family:var(--f-display);font-weight:600;font-size:2rem;line-height:1}
 .wx small{display:block;font-weight:700;font-size:.85rem;color:var(--ink2)}
 .wx b{display:block;font-size:.95rem;font-weight:700;max-width:14rem;line-height:1.15}
@@ -455,6 +470,7 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <button class="btn gear" id="gear" aria-label="Setup. Hold to open." title="Hold to open setup"><svg class="ic s"><use href="#i-gear"/></svg></button>
 </header>
 <div class="notice" id="notice" hidden></div>
+<div class="wxweek" id="wxweek" aria-label="Weather this week" hidden></div>
 
 <main>
   <section class="chores" id="chores" aria-label="Chores"></section>
@@ -1053,7 +1069,7 @@ function loadWx(force){
   var key = w.lat+','+w.lon;
   if(!force && WX.key === key && Date.now() - WX.at < 1800000) return;
   WX.at = Date.now(); WX.key = key;
-  fetch('https://api.open-meteo.com/v1/forecast?latitude='+w.lat+'&longitude='+w.lon+'&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&temperature_unit=fahrenheit&timezone=auto&forecast_days=3')
+  fetch('https://api.open-meteo.com/v1/forecast?latitude='+w.lat+'&longitude='+w.lon+'&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weather_code&temperature_unit=fahrenheit&timezone=auto&forecast_days=7')
     .then(function(r){ return r.json(); }).then(function(j){ if(j && j.current && j.daily){ WX.d = j; renderAll(); } })
     .catch(function(){ WX.at = Date.now() - 1500000; });
 }
@@ -1061,6 +1077,37 @@ function wxHtml(){
   var j = WX.d; if(!j || !(S.cfg && S.cfg.wx)) return '';
   var dl = j.daily, c = j.current;
   return '<span class="t">'+Math.round(c.temperature_2m)+'&deg;</span><span><small>'+esc(wxText(c.weather_code))+' &middot; High '+Math.round(dl.temperature_2m_max[0])+' Low '+Math.round(dl.temperature_2m_min[0])+'</small><b>'+esc(wearText(dl.temperature_2m_max[0], dl.temperature_2m_min[0], dl.precipitation_probability_max[0] || 0, dl.weather_code[0]))+'</b></span>';
+}
+/* the week at a glance: one tile per day and a sentence for the whole week */
+function wxGlyph(c){
+  return c === 0 ? '☀️' : c <= 2 ? '⛅' : c === 3 ? '☁️' : (c === 45 || c === 48) ? '🌫️' : (c >= 51 && c <= 57) ? '🌦️'
+    : ((c >= 61 && c <= 67) || (c >= 80 && c <= 82)) ? '🌧️' : ((c >= 71 && c <= 77) || c === 85 || c === 86) ? '❄️' : c >= 95 ? '⛈️' : '';
+}
+function wxWeekText(dl){
+  var n = Math.min(7, dl.time.length), hs = [], wet = [], frost = [], hot = [];
+  for(var i = 0; i < n; i++){
+    var c = dl.weather_code[i], p = dl.precipitation_probability_max[i] || 0, nm = i === 0 ? 'today' : DAYS[parseKey(dl.time[i]).getDay()];
+    var hi = Math.round(dl.temperature_2m_max[i]), lo = Math.round(dl.temperature_2m_min[i]);
+    hs.push(hi);
+    if(p >= 50 || (c >= 61 && c <= 67) || (c >= 71 && c <= 77) || (c >= 80 && c <= 86) || c >= 95) wet.push(nm);
+    if(lo <= 34) frost.push(nm);
+    if(hi >= 90) hot.push(nm);
+  }
+  var parts = ['Highs '+Math.min.apply(null, hs)+' to '+Math.max.apply(null, hs), wet.length === n ? 'Wet all week' : wet.length ? 'Rain likely '+wet.join(', ') : 'Mostly dry'];
+  if(frost.length) parts.push('Frost possible '+frost.join(', '));
+  if(hot.length) parts.push('Hot '+hot.join(', '));
+  return parts.join('. ')+'.';
+}
+function wxWeekHtml(){
+  var j = WX.d; if(!j || !(S.cfg && S.cfg.wx) || !j.daily.time || j.daily.time.length < 4) return '';
+  var dl = j.daily, n = Math.min(7, dl.time.length);
+  var out = '<div class="wk-s"><small>This week in '+esc(S.cfg.wx.name || 'your area')+'</small><b>'+esc(wxWeekText(dl))+'</b></div>';
+  for(var i = 0; i < n; i++){
+    var c = dl.weather_code[i], pop = dl.precipitation_probability_max[i] || 0, lab = i === 0 ? 'Today' : DAYS[parseKey(dl.time[i]).getDay()];
+    out += '<div class="wk-d'+(i === 0 ? ' today' : '')+'" title="'+esc(wxText(c))+'"><small>'+lab+'</small><span class="g" aria-hidden="true">'+wxGlyph(c)+'</span>'
+      + '<b>'+Math.round(dl.temperature_2m_max[i])+'&deg; <span class="lo">'+Math.round(dl.temperature_2m_min[i])+'&deg;</span></b>'+(pop >= 30 ? '<em>'+pop+'%</em>' : '')+'</div>';
+  }
+  return out;
 }
 function wxTomorrow(){
   var j = WX.d; if(!j || !(S.cfg && S.cfg.wx) || !j.daily.time[1]) return '';
@@ -1352,7 +1399,7 @@ function activityHtml(mid){
 }
 /* Where an event came from: typed in on this board, or synced from Google, a school or another calendar feed. */
 function sourceLabel(e){
-  var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source ? 'Calendar feed' : 'This board';
+  var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source === 'flyer' ? 'A school flyer, read by AI' : e.source ? 'Calendar feed' : 'This board';
   return s + (e.source && e.cal ? ' ('+e.cal+')' : '');
 }
 /* ---------- school: ParentSquare posts and unread messages, filled in by the server ---------- */
@@ -1368,12 +1415,46 @@ function spPost(p){
   if(p.pinned) tags += '<span class="tag">Pinned</span>';
   if(p.eventAt){ var ed = new Date(p.eventAt); tags += '<span class="tag">'+esc(ed.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})+', '+fmtTime(ed))+'</span>'; }
   (p.chips || []).forEach(function(c){ tags += '<span class="tag">'+esc(c)+'</span>'; });
+  var ai = p.ai, aiHtml = '';
+  if(ai && (ai.summary || ai.action)) aiHtml = '<span class="ai">'+(ai.summary ? '<span>'+esc(ai.summary)+'</span>' : '')+(ai.action ? '<span><b>To do:</b> '+esc(ai.action)+'</span>' : '')+'</span>';
+  if(ai && ai.events && ai.events.length) tags += '<span class="tag">'+ai.events.length+(ai.events.length === 1 ? ' date' : ' dates')+' found</span>';
   var im = (p.images || []).filter(function(u){ return /^https:\/\//i.test(u); });
   if(im.length) tags += '<span class="tag">'+im.length+(im.length === 1 ? ' picture' : ' pictures')+'</span>';
   var pics = open ? im.map(function(u){ return '<a class="sp-pic" href="'+esc(u)+'" target="_blank" rel="noopener"><img class="sp-img" loading="lazy" referrerpolicy="no-referrer" alt="Picture from the post" src="'+esc(u)+'"></a>'; }).join('') : '';
   return '<div class="sp"><button class="sp-t" data-act="spToggle" data-id="'+esc(p.id)+'" aria-expanded="'+open+'"><b>'+esc(p.title)+'</b>'
-    + '<small>'+esc((p.author || '')+(p.author && p.at ? ', ' : '')+spWhen(p.at)+(p.group ? ', '+p.group : ''))+'</small>'+(tags ? '<span class="tags">'+tags+'</span>' : '')+'</button>'
+    + '<small>'+esc((p.author || '')+(p.author && p.at ? ', ' : '')+spWhen(p.at)+(p.group ? ', '+p.group : ''))+'</small>'+aiHtml+(tags ? '<span class="tags">'+tags+'</span>' : '')+'</button>'
     + (open ? (p.snippet ? '<p>'+esc(p.snippet)+'</p>' : '')+pics+'<a href="'+esc(p.url)+'" target="_blank" rel="noopener">Open in ParentSquare</a>' : '')+'</div>';
+}
+/* writing to a child's teacher: needs the grown-up PIN, which the server checks */
+function spCompose(t){
+  var c = S.ui.cmp;
+  S.ui.cmp = c && c.tid === t.dataset.tid ? null : {sid:t.dataset.sid, tid:t.dataset.tid, name:t.dataset.name, text:'', pin:'', busy:false, err:''};
+  renderOverlay(true);
+}
+function spBox(d){
+  var c = S.ui.cmp; if(!c || c.tid !== d.tid) return '';
+  if(!(S.cfg && S.cfg.pin)) return '<div class="sp"><p class="hint" style="margin:0">Set a grown-up PIN first, in Setup under Display. It is the same PIN used to approve chores.</p></div>';
+  return '<div class="sp cmp"><b>Message to '+esc(d.name)+'</b>'
+    + '<textarea class="inp" data-cmp="text" maxlength="1500" rows="4" placeholder="Write a message" aria-label="Message">'+esc(c.text)+'</textarea>'
+    + '<div class="addrow"><input class="inp num" type="password" inputmode="numeric" maxlength="4" data-cmp="pin" placeholder="PIN" autocomplete="off" aria-label="Grown-up PIN" value="'+esc(c.pin)+'">'
+    + '<button class="btn primary" data-act="spSend"'+(c.busy ? ' disabled' : '')+'>'+(c.busy ? 'Sending...' : 'Send')+'</button><button class="btn" data-act="spCompose" data-sid="'+esc(d.sid)+'" data-tid="'+esc(d.tid)+'" data-name="'+esc(d.name)+'">Cancel</button></div>'
+    + (c.err ? '<p class="err">'+esc(c.err)+'</p>' : '')
+    + '<p class="hint" style="margin:.3rem 0 0">Sent from your ParentSquare account to '+esc(d.name)+'.</p></div>';
+}
+function spSend(){
+  var c = S.ui.cmp; if(!c || c.busy) return;
+  if(!c.text.trim()){ c.err = 'Write a message first.'; renderOverlay(true); return; }
+  if(c.pin.length !== 4){ c.err = 'Enter the 4 digit grown-up PIN.'; renderOverlay(true); return; }
+  c.busy = true; c.err = ''; renderOverlay(true);
+  fetch('/api/school-message', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({sid:c.sid, tid:c.tid, text:c.text, pin:c.pin})})
+    .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ return {ok:r.ok, j:j}; }); })
+    .then(function(x){
+      if(S.ui.cmp !== c) return;
+      if(x.ok){ S.ui.cmp = null; toast('Sent to '+(x.j.teacher || c.name)); }
+      else { c.busy = false; c.pin = ''; c.err = (x.j && x.j.error) || 'Could not send that.'; }
+      renderOverlay(true);
+    })
+    .catch(function(){ if(S.ui.cmp !== c) return; c.busy = false; c.err = 'Could not reach the board server.'; renderOverlay(true); });
 }
 /* a teacher's conversation: who, how many messages, when, and a link to read it on ParentSquare (the text is not kept here) */
 function spMsg(d){
@@ -1399,10 +1480,12 @@ function schoolView(){
   ms.forEach(function(m){
     var mine = posts.filter(function(p){ return p.child === m.id; }), un = unread[m.id] || unread[m.name];
     var mm = msgs.filter(function(d){ return d.child === m.id; });
-    if(!mine.length && !un && !mm.length) return;
+    var tch = S.school.filter(function(d){ return d.kind === 'teacher' && d.child === m.id; });
+    if(!mine.length && !un && !mm.length && !tch.length) return;
     mine.forEach(function(p){ used[p.id] = 1; });
     groups.push({head:'<div class="sp-gh">'+avatar(m,'sm')+'<h3>'+esc(m.name)+'</h3><small>'+esc((mine[0] && mine[0].school) || (un && un.school) || '')+'</small>'
       + (un ? '<a class="chip on" style="--mc:'+m.color+';text-decoration:none" href="'+esc(un.url)+'" target="_blank" rel="noopener">'+un.n+' unread message'+(un.n === 1 ? '' : 's')+'</a>' : '')+'</div>'
+      + (tch.length ? '<div class="facts" style="margin:0 0 .5rem">'+tch.map(function(d){ return '<button class="btn sm" data-act="spCompose" data-sid="'+esc(d.sid)+'" data-tid="'+esc(d.tid)+'" data-name="'+esc(d.name)+'">Message '+esc(d.name)+'</button>'; }).join('')+'</div>'+tch.map(spBox).join('') : '')
       + (mm.length ? '<span class="lbl">Messages</span>'+mm.slice(0, 3).map(spMsg).join('')+(mine.length ? '<span class="lbl">Posts</span>' : '') : ''), posts:mine.slice(0, 6)});
   });
   var district = posts.filter(function(p){ return !used[p.id]; });
@@ -1430,9 +1513,11 @@ function eventView(){
     + (rp ? '<dt>Repeats</dt><dd>'+esc(rp)+'</dd>' : '')
     + (who ? '<dt>Who</dt><dd>'+esc(who.name)+'</dd>' : '')
     + (e.location ? '<dt>Where</dt><dd>'+esc(e.location)+'</dd>' : '')
+    + (e.note ? '<dt>Details</dt><dd>'+esc(e.note)+'</dd>' : '')
     + '<dt>From</dt><dd>'+esc(sourceLabel(e))+'</dd>'
     + '</dl>'
-    + (e.source ? '<p class="hint">Synced automatically. Changes made here are replaced at the next sync, so make them at the source.</p>' : '')
+    + (e.source === 'flyer' ? '<p class="hint">Read from a school flyer by AI, so please check it. Edit or delete it if it is wrong.</p>'
+      : e.source ? '<p class="hint">Synced automatically. Changes made here are replaced at the next sync, so make them at the source.</p>' : '')
     + '<div class="facts"><button class="btn primary" data-act="editEvent">'+(e.rep ? 'Edit all' : 'Edit')+'</button>'
     + (e.rep ? armBtn('s'+e.id+e.occ, 'Skip this day', 'skipOcc', '') : '')
     + armBtn('e'+e.id, e.rep ? 'Delete all' : 'Delete', 'delEvent', '')+'</div>';
@@ -1552,7 +1637,7 @@ var REPS = [['','Never'],['daily','Every day'],['weekdays','Weekdays'],['weekly'
 function repLabel(r){ var x = REPS.filter(function(y){ return y[0] === r; })[0]; return x ? x[1] : ''; }
 function mkOcc(d, dk){
   var m = S.members.filter(function(x){ return x.id === d.who; })[0];
-  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk, source:d.source || '', cal:d.cal || ''};
+  var base = {id:d.id, local:true, title:d.title || '(No title)', color:(m ? m.color : 'var(--accent)'), location:d.loc || '', who:d.who || '', rep:d.rep || '', until:d.until || '', occ:dk, source:d.source || '', cal:d.cal || '', note:d.note || ''};
   var span = Math.max(0, Math.round((parseKey(d.ed || d.sd) - parseKey(d.sd)) / 864e5));
   if(d.allDay){ base.allDay = true; base.sk = dk; base.ek = dkey(addDays(parseKey(dk), span + 1)); return base; }
   var st = new Date(dk+'T'+(d.st || '09:00')+':00'); if(isNaN(st.getTime())) return null;
@@ -1757,7 +1842,7 @@ function renderOverlay(force){
     if(ptrDown){ pendingOv = true; return; }
     pendingOv = false; setHtml($('#groc-list'), grocList()); return;
   }
-  if(!force && ((a && a.tagName === 'INPUT' && sheet.contains(a)) || ptrDown)){ pendingOv = true; return; }
+  if(!force && ((a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && sheet.contains(a)) || ptrDown)){ pendingOv = true; return; }
   pendingOv = false; sc.hidden = false;
   sheet.className = ['event','eform','meal','groceries','day','notes','tomorrow','approve','timer'].indexOf(S.ui.overlay) > -1 ? 'small' : '';
   setHtml(sheet, build());
@@ -1777,6 +1862,7 @@ function renderAll(){
     setHtml(tn, tm && tm.dinner ? '<small>Tonight\'s dinner</small><b>'+esc(tm.dinner)+'</b>' : '<small>Dinner tonight</small><b class="dim">Tap to plan it</b>');
   } else tn.hidden = true;
   var wxe = $('#wx'), wh = S.ready ? wxHtml() : ''; wxe.hidden = !wh; setHtml(wxe, wh);
+  var wkw = $('#wxweek'), wkh = S.ready ? wxWeekHtml() : ''; wkw.hidden = !wkh; setHtml(wkw, wkh);
   var ab = $('#apvBtn'), pc = S.idx.pend.size; ab.hidden = !pc; $('#apvN').textContent = pc; $('#apvN').hidden = !pc;
   var nn = $('#noteN'); nn.textContent = S.notes.length; nn.hidden = !S.notes.length;
   var sb = $('#schoolBtn'), su = schoolUnreadTotal(); sb.hidden = !S.school.length; $('#schoolN').textContent = su; $('#schoolN').hidden = !su;
@@ -1915,7 +2001,9 @@ var H = {
   srvSet:function(){ var u = ($('#srv-url') && $('#srv-url').value || '').trim(); if(!u) return; if(!/^https?:\/\//.test(u)) u = 'http://'+u; if(window.KBApp && KBApp.setServer) KBApp.setServer(u); },
   srvOff:function(){ if(window.KBApp && KBApp.setServer) KBApp.setServer(''); },
   openNotes:function(){ openOv('notes'); },
-  openSchool:function(){ S.ui.sp = null; openOv('school'); },
+  openSchool:function(){ S.ui.sp = null; S.ui.cmp = null; openOv('school'); },
+  spCompose:spCompose,
+  spSend:spSend,
   spToggle:function(t){ S.ui.sp = S.ui.sp === t.dataset.id ? null : t.dataset.id; renderOverlay(true); },
   wxFind:geoSearch,
   wxPick:function(t){ var r = S.ui.geo[+t.dataset.i]; if(!r) return; S.ui.geo = null; setCfg({wx:{name:r.name, lat:r.lat, lon:r.lon}}); loadWx(true); },
@@ -2001,6 +2089,7 @@ document.addEventListener('change', function(e){ var t = e.target, f = t.dataset
 document.addEventListener('input', function(e){
   var t = e.target, k = t.dataset && t.dataset.f, f = S.ui.form;
   if(t.id === 'bk') S.ui.bk = t.value;
+  if(t.dataset && t.dataset.cmp && S.ui.cmp){ S.ui.cmp[t.dataset.cmp] = t.value; return; }
   if(!k || !f) return;
   f[k] = t.value;
   if(k === 'sd' && t.value && (!f.ed || f.ed < t.value)){ f.ed = t.value; var ed = $('#f-ed'); if(ed) ed.value = t.value; }
