@@ -675,6 +675,60 @@ function undoRedeem(){
   var doc = ledgerDoc(u.docId, u.mid); delete doc.spent[u.key]; saveLedger(u.docId, doc);
   S.undo = null; $('#toast').hidden = true;
 }
+/* Reset today: undo what was checked off (or cashed in) today. Items and earlier days are never touched. */
+function todayKeys(mid, routine){
+  var now = new Date(), out = [];
+  S.chores.forEach(function(c){
+    if(!!c.routine !== routine || (c.memberIds||[]).indexOf(mid) < 0) return;
+    var k = period(c, now)+'_'+c.id;
+    if(routine){
+      S.ledger.forEach(function(doc){ if(doc.memberId === mid && doc.rt && doc.rt[k] > 0) out.push({docId:doc.id, field:'rt', k:k}); });
+    } else {
+      var cur = S.idx.done.get(mid+'|'+k), pnd = S.idx.pend.get(mid+'|'+k);
+      if(cur) out.push({docId:cur.docId, field:'done', k:k});
+      if(pnd) out.push({docId:pnd.docId, field:'pend', k:k});
+    }
+  });
+  if(!routine){
+    var bk = dkey(now)+'_bonus', bn = S.idx.done.get(mid+'|'+bk);
+    if(bn) out.push({docId:bn.docId, field:'done', k:bk, bonus:true});
+  }
+  return out;
+}
+function doResetToday(mid, routine){
+  var list = todayKeys(mid, routine), docs = {}, n = 0;
+  var mem = S.members.filter(function(x){ return x.id === mid; })[0];
+  list.forEach(function(x){
+    var d = docs[x.docId] || (docs[x.docId] = ledgerDoc(x.docId, mid));
+    d[x.field][x.k] = 0;
+    if(!x.bonus) n++;
+  });
+  Object.keys(docs).forEach(function(id){ saveLedger(id, docs[id]); });
+  renderOverlay(true); renderAll();
+  toast(n ? 'Reset today for '+(mem ? mem.name : 'them')+': '+n+' undone' : 'Nothing to reset today');
+}
+function todayCashIns(){
+  var t = dkey(new Date()), out = [];
+  S.ledger.forEach(function(doc){
+    Object.keys(doc.spent||{}).forEach(function(k){
+      var sp = doc.spent[k];
+      if(!sp || !(sp.cost > 0) || dkey(new Date(sp.at || 0)) !== t) return;
+      if(sp.title === 'Adjustment' || sp.title === 'Bonus' || /^Allowance paid/.test(sp.title || '')) return;
+      out.push({docId:doc.id, mid:doc.memberId, k:k});
+    });
+  });
+  return out;
+}
+function doResetCashIns(){
+  var list = todayCashIns(), docs = {};
+  list.forEach(function(x){
+    var d = docs[x.docId] || (docs[x.docId] = ledgerDoc(x.docId, x.mid));
+    delete d.spent[x.k];
+  });
+  Object.keys(docs).forEach(function(id){ saveLedger(id, docs[id]); });
+  renderOverlay(true); renderAll();
+  toast(list.length ? 'Gave back the stars for '+list.length+' reward'+(list.length === 1 ? '' : 's') : 'Nothing to reset today');
+}
 function adjustStars(mid, n){
   var docId = mid+'_'+mkey(new Date()), doc = ledgerDoc(docId, mid);
   doc.spent[uid()] = {cost:-n, title:n>0 ? 'Bonus' : 'Adjustment', at:Date.now()};
@@ -1294,6 +1348,18 @@ function armBtn(key, label, act, attrs){
   var on = S.ui.del === key;
   return '<button class="btn sm danger'+(on ? ' arm' : '')+'" data-act="'+act+'" '+attrs+'>'+(on ? 'Tap again to delete' : label)+'</button>';
 }
+function resetRow(kind, m){
+  var n = todayKeys(m.id, kind === 'routine').filter(function(x){ return !x.bonus; }).length;
+  var key = 'reset-'+kind+m.id, on = S.ui.del === key;
+  return '<div class="facts" style="margin:.1rem 0 .7rem"><button class="btn sm danger'+(on ? ' arm' : '')+'" data-act="resetToday" data-kind="'+kind+'"'+(n ? '' : ' disabled')+'>'
+    + (on ? 'Tap again to reset' : 'Reset today for '+esc(m.name)+(n ? ' ('+n+')' : ''))+'</button></div>';
+}
+function cashInRow(){
+  var n = todayCashIns().length, on = S.ui.del === 'reset-rewards';
+  return '<div class="facts" style="margin:.1rem 0 .3rem"><button class="btn sm danger'+(on ? ' arm' : '')+'" data-act="resetCashIns"'+(n ? '' : ' disabled')+'>'
+    + (on ? 'Tap again to reset' : 'Reset today'+(n ? ' ('+n+' cashed in)' : ''))+'</button></div>'
+    + '<p class="hint" style="margin:0 0 .7rem">Gives back the stars from rewards cashed in today. Earlier days stay as they are.</p>';
+}
 function setupView(){
   var tabs = [['family','Family'],['chores','Chores'],['routines','Routines'],['rewards','Rewards'],['display','Display'],['more','More']].map(function(t){
     return '<button class="btn" role="tab" aria-selected="'+(S.ui.tab === t[0])+'" data-act="tab" data-id="'+t[0]+'">'+t[1]+'</button>';
@@ -1323,7 +1389,7 @@ function setupView(){
   } else if(S.ui.tab === 'rewards'){
     var haveR = S.rewards.map(function(r){ return r.title.toLowerCase(); });
     var rid = REWARD_IDEAS.filter(function(r){ return haveR.indexOf(r[0].toLowerCase()) < 0; }).map(function(r, i){ return '<button class="chip" data-act="quickReward" data-t="'+esc(r[0])+'" data-n="'+r[1]+'">+ '+esc(r[0])+' ('+r[1]+')</button>'; }).join('');
-    body = '<div class="rows">' + sortBy(S.rewards, function(r){ return r.cost; }).map(function(r){
+    body = cashInRow() + '<div class="rows">' + sortBy(S.rewards, function(r){ return r.cost; }).map(function(r){
       return '<div class="row"><input class="inp grow" data-chg="rtitle" data-id="'+r.id+'" value="'+esc(r.title)+'" aria-label="Reward" maxlength="40">'
         + '<input class="inp num" type="number" min="1" max="999" inputmode="numeric" data-chg="rcost" data-id="'+r.id+'" value="'+r.cost+'" aria-label="Star cost">'
         + armBtn('r'+r.id, 'Delete', 'delReward', 'data-id="'+r.id+'"')+'</div>';
@@ -1355,6 +1421,7 @@ function choresTab(ms, kind){
   var rows = sortBy(list, function(c){ return (c.part === 'am' ? '0' : c.part === 'aft' ? '2' : c.part === 'pm' ? '3' : '1')+'|'+(c.order||0)+'|'+c.title; }).map(choreRow).join('');
   var partPick = rt ? '<span class="lbl" style="margin-top:.2rem">Part of the day. New routines are added to the one you pick.</span><div class="chips">'+[['am','Morning'],['aft','After school'],['pm','Bedtime']].map(function(x){ var n = allList.filter(function(c){ return (c.part || 'am') === x[0]; }).length; return '<button class="chip'+(rp === x[0] ? ' on' : '')+'" data-act="rpart" data-v="'+x[0]+'">'+x[1]+' &middot; '+n+'</button>'; }).join('')+'</div>' : '';
   return '<div class="pick">'+pick+'</div>'
+    + (forM ? resetRow(kind, forM) : '')
     + (rt ? '<p class="hint" style="margin:.4rem 0 .6rem">Routines are daily checklists, like brushing teeth. They earn no stars and do not count toward the all-chores star.</p>' : '')
     + (forM ? partPick + '<div class="addrow"><input class="inp" id="new-'+word+'" placeholder="New '+word+' for '+esc(forM.name)+'" data-enter="'+(rt ? 'addRoutine' : 'addChore')+'" maxlength="40"><button class="btn primary" data-act="'+(rt ? 'addRoutine' : 'addChore')+'">Add '+word+'</button></div>'
       + (ideas ? '<span class="lbl" style="margin-top:.9rem">Quick adds for '+esc(forM.name)+(rt ? '. Every day.' : '. Every day. Stars are guessed from the name, change them after.')+'</span><div class="chips">'+ideas+'</div>' : '<div style="height:1rem"></div>') : '')
@@ -1815,6 +1882,8 @@ var H = {
   addReward:addReward,
   quickReward:function(t){ S.store.set('rewards', uid(), {title:t.dataset.t, cost:+t.dataset.n}); renderOverlay(true); },
   delReward:function(t){ arm('r'+t.dataset.id, function(){ S.store.del('rewards', t.dataset.id); }); },
+  resetToday:function(t){ var mid = S.ui.choreFor, rt = t.dataset.kind === 'routine'; arm('reset-'+t.dataset.kind+mid, function(){ doResetToday(mid, rt); }); },
+  resetCashIns:function(){ arm('reset-rewards', function(){ doResetCashIns(); }); },
   undo:undoRedeem
 };
 var CHG = {
