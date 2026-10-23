@@ -82,6 +82,11 @@ input{-webkit-user-select:text;user-select:text}
 .nextup em{display:block;font-style:normal;font-size:1.05rem;font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .apvchip{min-height:4.2rem;border-radius:1.4rem;padding:.4rem 1.4rem;font-size:1.2rem;font-weight:800}
 .btn.primary .cnt{background:var(--accent-ink);color:var(--accent)}
+.rb.more{display:none}
+.more-g{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.7rem}
+.more-i{position:relative;min-height:5.2rem;border:1px solid var(--line);border-radius:1.2rem;background:var(--panel2);display:flex;align-items:center;gap:.8rem;padding:0 1.1rem;font-size:1.2rem;font-weight:700;text-align:left}
+.more-i .ic{width:2rem;height:2rem;flex:none}
+.more-i .cnt{margin-left:auto}
 
 /* header */
 .top{display:flex;align-items:center;gap:1.1rem;flex:none}
@@ -294,6 +299,12 @@ body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inse
 .rw h4{margin:0;font-size:1.3rem;line-height:1.2;overflow-wrap:anywhere}
 .rw .cost{display:inline-flex;align-items:center;gap:.3rem;font-family:var(--f-display);font-weight:600;font-size:1.5rem;color:var(--star-ink)}
 .rw .acts{display:flex;gap:.5rem;margin-top:auto}
+.rw.ready{border-color:var(--star);background:color-mix(in srgb,var(--star) 9%,var(--panel))}
+.rw-p{display:flex;flex-direction:column;gap:.3rem}
+.rw-bar{height:.8rem;border-radius:.4rem;background:var(--panel2);overflow:hidden}
+.rw-bar i{display:block;height:100%;border-radius:.4rem;background:var(--star)}
+.rw-p span{font-size:.95rem;font-weight:700;color:var(--ink2)}
+.rw-p.ready span{color:var(--star-ink)}
 .rw .acts .btn{flex:1}
 .sw-row{display:flex;align-items:center;gap:.8rem;background:var(--panel2);border-radius:1rem;padding:.6rem .85rem;width:100%;text-align:left;border:0;min-height:3.4rem}
 .sw-row .dot{width:1rem;height:1rem;border-radius:50%;background:var(--c)}
@@ -391,8 +402,17 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
   .clock small{font-size:1.1rem}
   .date{font-size:1.05rem;text-align:right}
   .tonight{flex:1 1 100%;max-width:none}
-  .rb{min-height:3.1rem;padding:0 .7rem;font-size:.95rem}
-  .rb.gear{width:3.1rem;min-height:3.1rem}
+  body{padding-bottom:calc(6rem + env(safe-area-inset-bottom,0px))}
+  .rail{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--panel);border-top:1px solid var(--line);flex-wrap:nowrap;justify-content:space-around;gap:0;padding:.4rem .4rem max(.6rem,env(safe-area-inset-bottom,0px))}
+  .rb{flex:1 1 0;flex-direction:column;gap:.15rem;min-height:4.4rem;padding:0 .2rem;border:0;border-radius:1rem;background:transparent;font-size:.8rem;font-weight:700}
+  .rb .ic{width:1.9rem;height:1.9rem}
+  .rb.on{background:transparent;color:var(--accent)}
+  .rb.sec{display:none}
+  .rb.more{display:flex}
+  .rb .cnt{position:absolute;top:.3rem;right:calc(50% - 1.9rem)}
+  .rb.gear{width:auto;flex:1 1 0;min-height:4.4rem;border-radius:1rem}
+  body.calopen #cal{left:max(.8rem,env(safe-area-inset-left,0px));bottom:calc(5.6rem + env(safe-area-inset-bottom,0px))}
+  #toast{bottom:calc(6.4rem + env(safe-area-inset-bottom,0px))}
   .nextup{flex:1 1 100%;max-width:none}
   .cal{padding:.8rem}
   .cal-head{flex-wrap:wrap}
@@ -525,6 +545,7 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <symbol id="i-school" viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5zM7 11.5V16c0 1.5 2.2 3 5 3s5-1.5 5-3v-4.5"/></symbol>
   <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v11l-5 5H5zM14 20v-5h5"/></symbol>
   <symbol id="i-timer" viewBox="0 0 24 24"><path d="M12 5a8 8 0 100 16 8 8 0 000-16zM12 9v4l2.5 2M9.5 2h5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="19" cy="12" r="1.7" fill="currentColor"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 </svg>
 
@@ -533,12 +554,13 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <div class="rail-logo" aria-hidden="true"><svg class="ic"><use href="#i-star"/></svg></div>
   <button class="rb on" id="railBoard" data-act="goBoard" aria-current="page"><svg class="ic s"><use href="#i-home"/></svg>Board</button>
   <button class="rb" id="railCal" data-act="openCal"><svg class="ic s"><use href="#i-cal"/></svg>Calendar</button>
-  <button class="rb" id="railTom" data-act="openTomorrow"><svg class="ic s"><use href="#i-sunrise"/></svg>Tomorrow</button>
+  <button class="rb sec" id="railTom" data-act="openTomorrow"><svg class="ic s"><use href="#i-sunrise"/></svg>Tomorrow</button>
   <button class="rb" id="grocBtn" data-act="openGroc"><svg class="ic s"><use href="#i-cart"/></svg>Groceries<span class="cnt" id="grocN" hidden></span></button>
-  <button class="rb" id="schoolBtn" data-act="openSchool" hidden><svg class="ic s"><use href="#i-school"/></svg>School<span class="cnt" id="schoolN" hidden></span></button>
-  <button class="rb" id="railNotes" data-act="openNotes"><svg class="ic s"><use href="#i-note"/></svg>Notes<span class="cnt" id="noteN" hidden></span></button>
-  <button class="rb" id="rewardsBtn" data-act="openRewards"><svg class="ic s"><use href="#i-star"/></svg>Rewards</button>
-  <button class="rb" id="railTimer" data-act="openTimer"><svg class="ic s"><use href="#i-timer"/></svg>Timer</button>
+  <button class="rb sec" id="schoolBtn" data-act="openSchool" hidden><svg class="ic s"><use href="#i-school"/></svg>School<span class="cnt" id="schoolN" hidden></span></button>
+  <button class="rb sec" id="railNotes" data-act="openNotes"><svg class="ic s"><use href="#i-note"/></svg>Notes<span class="cnt" id="noteN" hidden></span></button>
+  <button class="rb sec" id="rewardsBtn" data-act="openRewards"><svg class="ic s"><use href="#i-star"/></svg>Rewards</button>
+  <button class="rb sec" id="railTimer" data-act="openTimer"><svg class="ic s"><use href="#i-timer"/></svg>Timer</button>
+  <button class="rb more" id="railMore" data-act="openMore"><svg class="ic s"><use href="#i-more"/></svg>More<span class="cnt" id="moreN" hidden></span></button>
   <div class="grow"></div>
   <button class="rb gear" id="gear" aria-label="Setup. Hold to open." title="Hold to open setup"><svg class="ic s"><use href="#i-gear"/></svg></button>
 </nav>
@@ -1127,7 +1149,8 @@ function renderNext(){
 // The rail highlights the place that is open.
 function railActive(){
   var ov = S.ui.overlay, map = {groceries:'grocBtn', school:'schoolBtn', notes:'railNotes', rewards:'rewardsBtn', timer:'railTimer', tomorrow:'railTom'};
-  var on = document.body.classList.contains('calopen') ? 'railCal' : (ov && map[ov]) || 'railBoard';
+  var on = document.body.classList.contains('calopen') ? 'railCal' : ov === 'more' ? 'railMore' : (ov && map[ov]) || 'railBoard';
+  var onEl = document.getElementById(on); if(onEl && !onEl.offsetParent) on = 'railMore';
   document.querySelectorAll('.rb').forEach(function(b){ var is = b.id === on; b.classList.toggle('on', is); if(is) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
 }
 function stripHtml(){
@@ -1566,7 +1589,9 @@ function rewardsView(){
     var acts = armed
       ? '<button class="btn primary" data-act="rewardYes" data-id="'+r.id+'">Yes, cash in</button><button class="btn" data-act="rewardNo">Not now</button>'
       : '<button class="btn'+(ok ? ' primary' : '')+'" data-act="rewardAsk" data-id="'+r.id+'"'+(ok ? '' : ' disabled')+'>'+(ok ? 'Cash in' : plural(r.cost - bal, 'more star'))+'</button>';
-    return '<div class="rw"><h4>'+esc(r.title)+'</h4><div class="cost">'+r.cost+starIc()+'</div>'+(armed ? '<div class="hint" style="margin:0">Spend '+r.cost+' stars?</div>' : '')+'<div class="acts">'+acts+'</div></div>';
+    var pct = Math.max(0, Math.min(100, Math.round(bal / r.cost * 100)));
+    var prog = '<div class="rw-p'+(ok ? ' ready' : '')+'"><div class="rw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="'+r.cost+'" aria-valuenow="'+Math.max(0, Math.min(r.cost, bal))+'"><i style="width:'+pct+'%"></i></div><span>'+(ok ? 'Ready to cash in' : Math.max(0, bal)+' of '+r.cost+' stars')+'</span></div>';
+    return '<div class="rw'+(ok ? ' ready' : '')+'"><h4>'+esc(r.title)+'</h4><div class="cost">'+r.cost+starIc()+'</div>'+prog+(armed ? '<div class="hint" style="margin:0">Spend '+r.cost+' stars?</div>' : '')+'<div class="acts">'+acts+'</div></div>';
   }).join('');
   return '<div class="sh"><h2>Reward shop</h2>'+close()+'</div><div class="pick">'+pick+'</div>'
     + (rateC() && bal > 0 ? '<div class="facts"><button class="btn'+(S.ui.del === 'payout' ? ' arm' : '')+'" data-act="payout">'+(S.ui.del === 'payout' ? 'Tap again to pay '+usd(bal) : 'Pay out '+usd(bal)+' allowance')+'</button></div>' : '')
@@ -1575,7 +1600,7 @@ function rewardsView(){
 }
 
 function activityHtml(mid){
-  var ev = [];
+  var ev = [], adj = {};
   S.ledger.forEach(function(doc){
     if(doc.memberId !== mid) return;
     var by = {};
@@ -1585,15 +1610,22 @@ function activityHtml(mid){
       by[p] = (by[p] || 0) + v;
     });
     Object.keys(by).forEach(function(d){ ev.push({d:d, t:'e', n:by[d]}); });
-    Object.keys(doc.spent||{}).forEach(function(k){ var sp = doc.spent[k]; ev.push({d:dkey(new Date(sp.at || Date.now())), t:'s', n:sp.cost || 0, title:sp.title || 'Cashed in'}); });
+    Object.keys(doc.spent||{}).forEach(function(k){
+      var sp = doc.spent[k], d = dkey(new Date(sp.at || Date.now()));
+      if(sp.title === 'Adjustment' || sp.title === 'Bonus'){ adj[d] = (adj[d] || 0) - (sp.cost || 0); return; }
+      ev.push({d:d, t:'s', n:sp.cost || 0, title:sp.title || 'Cashed in'});
+    });
   });
+  Object.keys(adj).forEach(function(d){ if(adj[d]) ev.push({d:d, t:'a', n:adj[d]}); });
   ev.sort(function(a, b){ return a.d < b.d ? 1 : a.d > b.d ? -1 : (a.t === 'e' ? -1 : 1); });
-  ev = ev.slice(0, 14);
+  ev = ev.slice(0, 40);
   if(!ev.length) return '';
-  return '<span class="lbl" style="margin-top:1.2rem">Recent activity</span><div class="rows">'+ev.map(function(e){
+  var all = S.ui.actAll, shown = all ? ev : ev.slice(0, 4);
+  return '<span class="lbl" style="margin-top:1.2rem">Recent activity</span><div class="rows">'+shown.map(function(e){
     var dl = parseKey(e.d).toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
-    return '<div class="row" style="padding:.4rem .75rem"><span class="grow" style="font-weight:700">'+esc(dl)+'</span><span style="font-weight:700;color:'+(e.t === 'e' ? 'var(--star-ink)' : 'var(--ink2)')+'">'+(e.t === 'e' ? 'Earned '+e.n+' star'+(e.n === 1 ? '' : 's') : esc(e.title)+', '+e.n+' star'+(e.n === 1 ? '' : 's'))+'</span></div>';
-  }).join('')+'</div>';
+    var txt = e.t === 'e' ? 'Earned '+plural(e.n, 'star') : e.t === 'a' ? (e.n > 0 ? 'Bonus and adjustments, +' : 'Adjustments, ')+plural(e.n, 'star') : esc(e.title)+', '+plural(e.n, 'star');
+    return '<div class="row" style="padding:.4rem .75rem"><span class="grow" style="font-weight:700">'+esc(dl)+'</span><span style="font-weight:700;color:'+(e.t === 'e' ? 'var(--star-ink)' : 'var(--ink2)')+'">'+txt+'</span></div>';
+  }).join('')+'</div>'+(ev.length > 4 ? '<button class="btn sm" data-act="actMore">'+(all ? 'Show less' : 'Show '+(ev.length - 4)+' more')+'</button>' : '');
 }
 /* Where an event came from: typed in on this board, or synced from Google, a school or another calendar feed. */
 function sourceLabel(e){
@@ -2061,9 +2093,20 @@ function displayTab(){
     + '<p class="hint">Settings here are shared by every screen that opens this board.</p>';
 }
 
+function moreView(){
+  var su = schoolUnreadTotal();
+  function it(act, icon, label, badge){ return '<button class="more-i" data-act="'+act+'"><svg class="ic s"><use href="#i-'+icon+'"/></svg><span>'+label+'</span>'+(badge ? '<span class="cnt">'+badge+'</span>' : '')+'</button>'; }
+  return '<div class="sh"><h2>More</h2>'+close()+'</div><div class="more-g">'
+    + it('openTomorrow', 'sunrise', 'Tomorrow')
+    + (S.school.length ? it('openSchool', 'school', 'School', su) : '')
+    + it('openNotes', 'note', 'Notes', S.notes.length)
+    + it('openRewards', 'star', 'Rewards')
+    + it('openTimer', 'timer', 'Timer')
+    + '</div>';
+}
 function build(){
   var o = S.ui.overlay;
-  return o === 'rewards' ? rewardsView() : o === 'event' ? eventView() : (o === 'eform' && S.ui.form) ? formView()
+  return o === 'more' ? moreView() : o === 'rewards' ? rewardsView() : o === 'event' ? eventView() : (o === 'eform' && S.ui.form) ? formView()
     : o === 'day' ? dayView() : o === 'groceries' ? grocView() : o === 'notes' ? notesView() : o === 'school' ? schoolView() : o === 'approve' ? approveView() : o === 'timer' ? timerView() : o === 'tomorrow' ? tomorrowView() : (o === 'meal' && S.ui.meal) ? mealView() : setupView();
 }
 function renderOverlay(force){
@@ -2077,7 +2120,7 @@ function renderOverlay(force){
   }
   if(!force && ((a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA') && sheet.contains(a)) || ptrDown)){ pendingOv = true; return; }
   pendingOv = false; sc.hidden = false;
-  sheet.className = ['event','eform','meal','groceries','day','notes','tomorrow','approve','timer'].indexOf(S.ui.overlay) > -1 ? 'small' : '';
+  sheet.className = ['event','eform','meal','groceries','day','notes','tomorrow','approve','timer','more'].indexOf(S.ui.overlay) > -1 ? 'small' : '';
   setHtml(sheet, build());
 }
 function flushOv(){ setTimeout(function(){ if(pendingOv && !ptrDown) renderOverlay(); }, 60); }
@@ -2101,6 +2144,7 @@ function renderAll(){
   var ab = $('#apvBtn'), pc = S.idx.pend.size; ab.hidden = !pc; $('#apvN').textContent = pc; $('#apvN').hidden = !pc;
   var nn = $('#noteN'); nn.textContent = S.notes.length; nn.hidden = !S.notes.length;
   var sb = $('#schoolBtn'), su = schoolUnreadTotal(); sb.hidden = !S.school.length; $('#schoolN').textContent = su; $('#schoolN').hidden = !su;
+  var mn = $('#moreN'); mn.textContent = su; mn.hidden = !su;
   var gc = grocCount(), gn = $('#grocN'); gn.textContent = gc; gn.hidden = !gc;
 }
 
@@ -2174,6 +2218,7 @@ var H = {
   evSide:function(t){ S.ui.ev = S.sideEvs[+t.dataset.i]; openOv('event'); },
   openApprove:function(){ S.ui.pin = ''; S.ui.then = null; openOv('approve'); },
   openTimer:function(){ openOv('timer'); },
+  openMore:function(){ openOv('more'); },
   pinKey:function(t){
     var v = t.dataset.v, p = S.ui.pin || '';
     if(v === 'back') p = p.slice(0, -1); else if(p.length < 4) p += v;
@@ -2223,6 +2268,7 @@ var H = {
   quickRoutine:function(t){ addChore(t.dataset.t, true); },
   rpart:function(t){ S.ui.rpart = t.dataset.v; renderOverlay(true); },
   toggleRt:function(t){ toggleRoutine(t.dataset.m, t.dataset.c); },
+  actMore:function(){ S.ui.actAll = !S.ui.actAll; renderOverlay(true); },
   rtab:function(t){ S.ui.rtab[t.dataset.m] = {g:t.dataset.g, ph:phaseNow(new Date())}; renderChores(); },
   expDone:function(t){ S.ui.exp[t.dataset.m] = !S.ui.exp[t.dataset.m]; renderChores(); },
   splitSave:function(){
