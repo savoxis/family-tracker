@@ -1,0 +1,5 @@
+.git
+android
+node_modules
+server/data
+**/*.md

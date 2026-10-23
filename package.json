@@ -1,0 +1,11 @@
+{
+  "name": "family-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Kitchen Board: touch-first family chores, stars, calendar, dinner and groceries. Static web app, tiny Node server, Android wrapper.",
+  "scripts": {
+    "start": "node server/server.js",
+    "test": "node --test server/server.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

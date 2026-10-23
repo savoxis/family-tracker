@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.yeylandwutani.kitchenboard'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.yeylandwutani.kitchenboard'
+        minSdk 26
+        targetSdk 34
+        versionCode 1
+        versionName '1.0.0'
+    }
+
+    buildTypes {
+        release { minifyEnabled false }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    // The app ships the same web/ folder the Docker server serves. One copy of the UI, no drift.
+    sourceSets {
+        main { assets.srcDirs = ["$buildDir/generated/webassets"] }
+    }
+}
+
+tasks.register('syncWeb', Copy) {
+    from file('../../web')
+    into "$buildDir/generated/webassets"
+}
+tasks.named('preBuild') { dependsOn 'syncWeb' }

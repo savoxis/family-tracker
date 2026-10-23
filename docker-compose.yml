@@ -1,0 +1,15 @@
+services:
+  kitchen-board:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    # Or pull the prebuilt image instead of building:
+    # image: ghcr.io/savoxis/family-tracker:latest
+    container_name: kitchen-board
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - kitchen-board-data:/data
+volumes:
+  kitchen-board-data:

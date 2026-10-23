@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>kitchen-board</Name>
+  <Repository>ghcr.io/savoxis/family-tracker:latest</Repository>
+  <Registry>https://github.com/savoxis/family-tracker/pkgs/container/family-tracker</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/savoxis/family-tracker</Support>
+  <Overview>Kitchen Board: family chores, stars, calendar, dinner and groceries. One shared board for every screen on the network. No login, keep it on the LAN or behind a proxy with access rules.</Overview>
+  <Category>Other:</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <!-- UnRAID appdata is owned by nobody:users (99:100). The image runs as uid 1000 by default and could not write there. -->
+  <ExtraParams>--user 99:100</ExtraParams>
+  <Config Name="Web UI port" Target="8080" Default="8080" Mode="tcp" Description="Port the board is served on" Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+  <Config Name="Board data" Target="/data" Default="/mnt/user/appdata/kitchen-board" Mode="rw" Description="board.json lives here. Back this folder up." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/kitchen-board</Config>
+</Container>
