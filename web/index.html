@@ -2070,6 +2070,7 @@ function applyDisplay(){
   var dim = night ? ({off:0, soft:0.3, strong:0.55}[c.dim || 'soft'] || 0) : 0;
   if(dim !== curDim){ curDim = dim; $('#dim').style.opacity = dim; }
 }
+function inFull(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
 function setCfg(p){
   var n = {}; Object.keys(S.cfg || {}).forEach(function(k){ if(k !== 'id') n[k] = S.cfg[k]; });
   Object.keys(p).forEach(function(k){ n[k] = p[k]; });
@@ -2088,7 +2089,7 @@ function displayTab(){
     + (window.KBApp ? '<button class="sw-row" role="switch" aria-checked="'+KBApp.immersive()+'" data-act="cfgBars" style="margin-top:.8rem"><span class="nm">Full screen: hide the system bars</span><span class="pill"></span></button>'
       + '<div class="facts"><button class="btn" data-act="pinApp">Lock the screen to this app</button></div>'
       + '<p class="hint">Locking asks Android to pin the app so the taskbar and nav buttons stay away. To unlock, hold Back and Overview together.</p>'
-      : '<div class="facts"><button class="btn" data-act="fullscreen">Full screen</button></div>')
+      : '<div class="facts"><button class="btn" data-act="fullscreen">'+(inFull() ? 'Exit full screen' : 'Full screen')+'</button></div>')
     + wxSetup()
     + '<p class="hint">Settings here are shared by every screen that opens this board.</p>';
 }
@@ -2329,7 +2330,12 @@ var H = {
   pinApp:function(){ if(window.KBApp) KBApp.pin(); },
   cfgAwake:function(){ setCfg({awake:!awakeOn()}); keepAwake(); },
   cfgDim:function(t){ setCfg({dim:t.dataset.v}); },
-  fullscreen:function(){ try { var r = document.documentElement; (r.requestFullscreen || r.webkitRequestFullscreen).call(r); } catch(e){ toast('Full screen is not available here'); } },
+  fullscreen:function(){
+    try {
+      if(inFull()) (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      else { var r = document.documentElement; (r.requestFullscreen || r.webkitRequestFullscreen).call(r); }
+    } catch(e){ toast('Full screen is not available here'); }
+  },
   fAllDay:function(){ if(S.ui.form){ S.ui.form.allDay = !S.ui.form.allDay; renderOverlay(true); } },
   saveEvent:saveEvent,
   cancelForm:closeOv,
@@ -2402,6 +2408,7 @@ document.addEventListener('keydown', function(){ lastAct = Date.now(); if(PH.on)
 document.addEventListener('focusout', flushOv);
 
 /* hold the gear to open setup, so small hands do not wander in */
+['fullscreenchange', 'webkitfullscreenchange'].forEach(function(n){ document.addEventListener(n, function(){ renderOverlay(true); }); });
 var gear = $('#gear'), holdT = null;
 gear.addEventListener('pointerdown', function(){
   gear.classList.add('holding');
