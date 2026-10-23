@@ -195,6 +195,7 @@ body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inse
 .week{flex:1;min-height:0;display:grid;grid-template-columns:var(--wk,repeat(7,minmax(0,1fr)));gap:.6rem;align-items:start;align-content:start;overflow:auto}
 .day{background:var(--panel2);border-radius:1.1rem;padding:.7rem .6rem .6rem;display:flex;flex-direction:column;gap:.55rem;min-width:0;min-height:0}
 .day.today{background:color-mix(in srgb,var(--accent) 9%,var(--panel));box-shadow:inset 0 0 0 2px var(--accent)}
+.day.hl{box-shadow:inset 0 0 0 3px var(--star)}
 .day.today .ev-n{font-size:1.25rem}
 .day.today .ev-t{font-size:.95rem}
 .day.past{background:none;box-shadow:inset 0 0 0 1px var(--line)}
@@ -1029,7 +1030,7 @@ function renderCal(){
     var ml = mm[dk], dinner = ml && ml.dinner;
     var meal = '<button class="meal'+(dinner ? '' : ' empty-m')+'" data-act="meal" data-d="'+dk+'" aria-label="Dinner on '+esc(DAY_LONG[d.getDay()])+'">'
       + (dinner ? '<small>Dinner</small>'+esc(dinner) : '+ Dinner') + '</button>';
-    return '<section class="day'+(dk === todayK ? ' today' : dk < todayK ? ' past' : '')+'" aria-label="'+esc(DAY_LONG[d.getDay()]+' '+d.getDate())+'">'
+    return '<section class="day'+(dk === todayK ? ' today' : dk < todayK ? ' past' : '')+(dk === S.ui.hl ? ' hl' : '')+'" aria-label="'+esc(DAY_LONG[d.getDay()]+' '+d.getDate())+'">'
       + '<header><div class="dh"><span class="dow">'+label+'</span><span class="dnum">'+d.getDate()+'</span></div>'
       + '<button class="addev" data-act="newOn" data-d="'+dk+'" aria-label="Add event on '+esc(DAY_LONG[d.getDay()])+'">+</button></header>'
       + dayBadges(d, todayK)
@@ -2241,10 +2242,15 @@ var H = {
   remDel:function(t){ var l = ((S.cfg && S.cfg.reminders) || []).slice(); l.splice(+t.dataset.i, 1); setCfg({reminders:l}); },
   say:function(t){ sayLeft(t.dataset.m); },
   openCal:function(){ document.body.classList.add('calopen'); railActive(); },
-  closeCal:function(){ document.body.classList.remove('calopen'); railActive(); },
-  goBoard:function(){ document.body.classList.remove('calopen'); closeOv(); },
+  closeCal:function(){ document.body.classList.remove('calopen'); S.ui.hl = null; railActive(); },
+  goBoard:function(){ document.body.classList.remove('calopen'); S.ui.hl = null; closeOv(); },
   nextEv:function(){ if(S.nextEv){ S.ui.ev = S.nextEv; openOv('event'); } },
-  upEv:function(t){ S.ui.ev = S.upEvs[+t.dataset.i]; if(S.ui.ev) openOv('event'); },
+  upEv:function(t){
+    var e = S.upEvs[+t.dataset.i]; if(!e) return;
+    S.ui.calMode = 'week'; S.ui.hl = e.sk;
+    S.ui.weekOffset = Math.round((weekStart(parseKey(e.sk)) - weekStart(new Date())) / (7 * 864e5));
+    document.body.classList.add('calopen'); renderCal(); railActive();
+  },
   evSide:function(t){ S.ui.ev = S.sideEvs[+t.dataset.i]; openOv('event'); },
   openApprove:function(){ S.ui.pin = ''; S.ui.then = null; openOv('approve'); },
   openTimer:function(){ openOv('timer'); },
