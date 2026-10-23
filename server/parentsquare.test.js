@@ -14,11 +14,11 @@ const post = (o) => '<div id="feed_' + o.id + '" data-feed-levels="[&quot;' + o.
 
 // A small stand-in for ParentSquare: CSRF token, cookie session, redirect to /signin when signed out.
 function fakeSite() {
-  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {} };
+  const site = { logins: 0, session: 'sess-1', schools: {}, user: 'parent@example.com', pass: 'correct horse', down: {}, paths: [], signups: {}, chats: {} };
   const page = (id) => {
     const s = site.schools[id] || { name: 'Unknown', posts: [], unread: 0 };
     return '<html><head><title>Posts | ' + s.name + ' | ParentSquare</title></head><body>'
-      + (s.unread ? '<a href="/chats">Messages <span class="badge"><span class="sr-only">Unread Messages:</span> ' + s.unread + ' </span></a>' : '<a href="/chats">Messages</a>')
+      + '<a href="/schools/' + id + '/users/777/chats">inbox</a>' + (s.unread ? '<a href="/chats">Messages <span class="badge"><span class="sr-only">Unread Messages:</span> ' + s.unread + ' </span></a>' : '<a href="/chats">Messages</a>')
       + s.posts.map(post).join('') + '</body></html>';
   };
   site.srv = http.createServer((req, res) => {
@@ -26,6 +26,7 @@ function fakeSite() {
     req.on('data', (c) => chunks.push(c));
     req.on('end', () => {
       const cookie = req.headers.cookie || '';
+      site.paths.push(req.method + ' ' + req.url);
       if (req.url === '/signin') {
         res.setHeader('Set-Cookie', 'ps_s=anon; Path=/; HttpOnly');
         return res.end('<form action="/sessions" method="post"><input type="hidden" name="utf8" value="&#x2713;"><input type="hidden" name="authenticity_token" value="TOK&#x2B;1"><input name="session[email]"><input type="password" name="session[password]"></form>');
@@ -45,16 +46,37 @@ function fakeSite() {
         if (site.down[m[1]]) { res.statusCode = 500; return res.end('oops'); }
         return res.end(page(m[1]));
       }
+      const authed = cookie.includes('ps_s=' + site.session);
+      let x;
+      if ((x = /^\/schools\/(\d+)\/sign_ups$/.exec(req.url))) {
+        if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
+        if (site.down['su' + x[1]]) { res.statusCode = 500; return res.end('oops'); }
+        return res.end(site.signups[x[1]] || '');
+      }
+      if ((x = /^\/schools\/(\d+)\/users\/777\/chats$/.exec(req.url))) {
+        if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
+        return res.end(site.chats[x[1]] || '');
+      }
+      if (/^\/schools\/(\d+)\/users\/autocomplete\?/.test(req.url)) {
+        if (!authed) { res.statusCode = 302; res.setHeader('Location', '/signin'); return res.end(); }
+        return res.end(JSON.stringify([[{ id: 14347987, name: 'Keli Bruehling', role: ['Teacher', null], is_student: false }, { id: 555, name: 'Keli Bruehling Jr', role: ['Student'], is_student: true }], 2]));
+      }
       res.statusCode = 404; res.end();
     });
   });
   site.listen = () => new Promise((r) => site.srv.listen(0, '127.0.0.1', () => r('http://127.0.0.1:' + site.srv.address().port)));
   return site;
 }
+const slot = (id, time, who) => '<div id="wish_list_item_' + id + '" class="wish-list-item-row"><div class="wish-list-item-name"><p>Appointment Time Slot</p></div><div class="wish-list-item-time"> ' + time + ' </div>'
+  + (who || []).map((w, i) => '<li id="sign_up_' + id + i + '" class="col-sign-ups-entry hover-box"><a href="/schools/1/users/' + w[0] + '">' + w[1] + '</a><span class="ml-5">(' + w[2] + ')</span></li>').join('') + '</div>';
+const signupPost = (id, title, body) => '<div id="feed_' + id + '" data-feed-levels="[&quot;x&quot;]"><div class="feed-show"><div class="feed-title"><div class="subject center-aligned" role="heading"> ' + title + ' </div></div>' + body + '</div></div>';
+const dateHead = (t) => '<div class="wish-list-date space-between "><span>' + t + '</span></div>';
+const chatItem = (id, name, n, when, preview) => '<a class="a-chat-thread a-chat-thread-' + id + ' " role="button" aria-label="Conversation with ' + name + '. ' + n + ' messages total. Last message sent: ' + when + '" aria-selected="false"><span class="user-thread-chat-name-' + id + '">' + name
+  + '</span><span class="badge badge-outline">' + n + '</span><div class="date">' + when + '</div><span class="reaction-icons">' + (preview || '') + '</span></a>';
 const mk = (site, base, extra) => {
   const out = { calls: [], logs: [] };
   out.w = ps.create(Object.assign({ base, user: site.user, password: site.pass, schools: [{ id: '1', child: 'Xander' }, { id: '2', child: 'Bastian' }], minLoginGapMs: 0,
-    onData: (docs, ok) => out.calls.push({ docs, ok }), log: (m) => out.logs.push(m) }, extra || {}));
+    onData: (docs, ok, skip) => out.calls.push({ docs, ok, skip }), log: (m) => out.logs.push(m) }, extra || {}));
   return out;
 };
 
@@ -69,7 +91,7 @@ test('reads posts, flags, event dates, previews and the unread count out of the 
   const [a, b] = r.posts;
   assert.deepStrictEqual([a.id, a.title, a.author, a.level, a.pinned, a.snippet], ['11', 'Picture Day & Retakes', 'Ms. Lee', 'Brockway Elementary', true, 'Bring a smile. Forms due Friday.']);
   assert.deepStrictEqual([b.pinned, b.chips, b.level, b.at, b.eventAt], [false, ['1 form', '4 RSVPs', '2/25 Sign Ups', '1 file'], 'Winston Dillard School District', '2026-10-16T20:28:14.000Z', '2026-10-31T22:00:00.000Z']);
-  assert.deepStrictEqual(ps.parseFeed('<html></html>'), { posts: [], unread: 0, school: '' });
+  assert.deepStrictEqual(ps.parseFeed('<html></html>'), { posts: [], unread: 0, school: '', uid: '' });
 });
 
 test('post pictures are collected once, small and tracking images are skipped', () => {
@@ -156,6 +178,68 @@ test('a wrong password stops after three tries and says so on the board', async 
     assert.strictEqual(last.get('ps-status').ok, false);
     assert.match(last.get('ps-status').message, /sign-in stopped/);
     assert.ok(!t.logs.join('\n').includes('wrong'), 'password in log');
+  } finally { site.srv.close(); }
+});
+
+const NOW = Date.UTC(2026, 9, 22, 20, 0, 0);
+
+test('your own appointment slots are picked out of the sign-ups page, other families are ignored', () => {
+  const html = signupPost(901, 'Appointment Sign Ups - Bruehling', dateHead('Friday, Oct 30')
+    + slot(1, '10:00 AM to 10:15 AM', [[999, 'Other Parent', 'Other Kid']])
+    + slot(2, '12:00 PM to 12:15 PM', [[777, 'Zachary Child', 'Sebastian Child']])
+    + slot(3, '12:20 PM to 12:35 PM', []) + dateHead('Monday, Nov 2') + slot(4, '1:05 PM to 1:20 PM', [[777, 'Zachary Child', 'Sebastian Child']]))
+    + signupPost(902, 'Volunteers', dateHead('Saturday, Oct 31') + slot(5, '3:00 PM to 4:00 PM', [[999, 'Someone', 'Else']]));
+  const r = ps.parseSignups(html, '777', NOW);
+  assert.deepStrictEqual(r.map((g) => [g.post, g.title, g.date, g.st, g.et]), [['901', 'Appointment Sign Ups - Bruehling', '2026-10-30', '12:00', '12:15'], ['901', 'Appointment Sign Ups - Bruehling', '2026-11-02', '13:05', '13:20']]);
+  assert.deepStrictEqual(ps.parseSignups(html, '', NOW), [], 'without a user id nothing can be told apart');
+  assert.strictEqual(ps.appointmentTitle('Appointment Sign Ups - Bruehling'), 'Appointment with Bruehling');
+  assert.strictEqual(ps.appointmentTitle('Conference Sign-Up: Ms. Frost'), 'Conference with Ms. Frost');
+  assert.strictEqual(ps.appointmentTitle('Volunteers'), 'Volunteers');
+});
+
+test('the message list gives who, how many and when in board time, and the text only on request', () => {
+  const html = chatItem(11, 'Kayla Knight', 8, 'Thu 10/22/26, 3:05 pm', 'A private note') + chatItem(12, 'Front Office', 2, 'Mon 10/05/26, 9:30 am', '');
+  const a = ps.parseChats(html, 'America/Los_Angeles', false);
+  assert.deepStrictEqual(a.map((c) => [c.id, c.name, c.count, c.at, c.preview]), [['11', 'Kayla Knight', 8, '2026-10-22T22:05:00.000Z', ''], ['12', 'Front Office', 2, '2026-10-05T16:30:00.000Z', '']]);
+  assert.strictEqual(ps.parseChats(html, 'America/Los_Angeles', true)[0].preview, 'A private note');
+  assert.deepStrictEqual(ps.parseChats('<html></html>', 'UTC', false), []);
+});
+
+test('sign-ups, messages and teachers arrive tied to the right child, and no conversation is ever opened', async () => {
+  const site = fakeSite();
+  const base = await site.listen();
+  site.schools = { 1: { name: 'Brockway Elementary', unread: 1, posts: [] }, 2: { name: 'McGovern Elementary', unread: 0, posts: [] } };
+  site.chats = { 1: chatItem(11, 'Kayla Knight', 8, 'Thu 10/22/26, 3:05 pm', 'secret words') + chatItem(12, 'Front Office', 2, 'Mon 10/05/26, 9:30 am') };
+  site.signups = { 2: signupPost(901, 'Appointment Sign Ups - Bruehling', dateHead('Friday, Oct 30') + slot(2, '12:00 PM to 12:15 PM', [[777, 'Zachary Child', 'Sebastian Child']])) };
+  const t = mk(site, base, { tz: 'America/Los_Angeles', now: () => NOW, teachers: [{ child: 'Bastian', name: 'Keli Bruehling' }, { child: 'Xander', name: 'Nobody Here' }] });
+  try {
+    const docs = await t.w.poll();
+    const su = docs.get('ps-su-20');
+    assert.deepStrictEqual([su.title, su.sd, su.st, su.et, su.childName, su.school], ['Appointment with Bruehling', '2026-10-30', '12:00', '12:15', 'Bastian', 'McGovern Elementary']);
+    const m = docs.get('ps-chat-11');
+    assert.deepStrictEqual([m.name, m.count, m.at, m.unread, m.childName, m.preview], ['Kayla Knight', 8, '2026-10-22T22:05:00.000Z', true, 'Xander', '']);
+    assert.strictEqual(docs.get('ps-chat-12').unread, false);
+    assert.ok(!JSON.stringify([...docs.values()]).includes('secret words'), 'message text must not be stored unless asked for');
+    const tc = docs.get('ps-teacher-2-14347987');
+    assert.deepStrictEqual([tc.name, tc.role, tc.childName], ['Keli Bruehling', 'Teacher', 'Bastian']);
+    assert.ok(![...docs.keys()].some((k) => k.startsWith('ps-teacher-1-')), 'an unknown teacher is not offered');
+    assert.ok(!site.paths.some((p) => /\/chats\/\d+/.test(p)), 'a conversation page was opened: ' + site.paths.filter((p) => /chats/.test(p)).join(' '));
+    assert.ok(site.paths.some((p) => /autocomplete/.test(p)));
+  } finally { site.srv.close(); }
+});
+
+test('a page that cannot be read is skipped, not treated as empty', async () => {
+  const site = fakeSite();
+  const base = await site.listen();
+  site.schools = { 1: { name: 'Brockway Elementary', unread: 0, posts: [] } };
+  site.down.su1 = true;
+  site.chats = { 1: '<html><body>No conversations yet</body></html>' };
+  const t = mk(site, base, { schools: [{ id: '1', child: 'Xander' }], tz: 'UTC' });
+  try {
+    await t.w.poll();
+    const skip = t.calls[0].skip;
+    assert.ok(skip.has('1|signup'), 'sign-ups failed so they must be left alone');
+    assert.ok(!skip.has('1|message'));
   } finally { site.srv.close(); }
 });
 

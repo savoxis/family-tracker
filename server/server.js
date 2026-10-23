@@ -37,8 +37,11 @@
  * ParentSquare (see parentsquare.js): PARENTSQUARE_USER, PARENTSQUARE_PASSWORD and PS_SCHOOLS
  * (school id and the child it belongs to, like 13482:Xander,13486:Bastian). The server signs in
  * itself, renews the session, and keeps recent school posts and the unread message count in the
- * school collection, tied to the right child, for the School view on the board. PS_MINUTES (15).
- * The password is never logged.
+ * school collection, tied to the right child, for the School view on the board. It also lists the
+ * message conversations (who wrote, how many, when; the text only if PS_MESSAGE_PREVIEW=1, and a
+ * conversation is never opened, which would mark it read) and puts your own appointment sign-ups
+ * on the calendar. PS_TEACHERS (Xander:Kayla Knight,Bastian:Keli Bruehling) names each child's
+ * teacher. PS_MINUTES (15). The password is never logged.
  *
  * Calendar feeds can be tied to a family member with Label@Member|url (their events then show in
  * that person's color), and every synced event carries a source: google, school or calendar.
@@ -46,7 +49,7 @@
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
  *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
- *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_MINUTES (15),
+ *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_TEACHERS, PS_MESSAGE_PREVIEW, PS_MINUTES (15),
  *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN,
  *      TEXTBELT_KEY, SMS_TO, SMS_REMIND_AT, SMS_DAILY_MAX (12), SMS_DRYRUN
  */
@@ -307,8 +310,9 @@ function startSms() {
 }
 
 /* ---------- parentsquare: school posts and unread messages for the School view ---------- */
-function applySchool(docs, okIds) {
+function applySchool(docs, okIds, skip) {
   const col = state.data.school;
+  skip = skip || new Set();
   let changed = 0;
   for (const [id, d0] of docs) {
     const d = d0.kind === 'status' ? d0 : Object.assign({}, d0, { child: memberIdByName(d0.childName) });
@@ -316,9 +320,21 @@ function applySchool(docs, okIds) {
     const same = d.kind === 'status' ? !!old && old.ok === d.ok && old.message === d.message : JSON.stringify(old) === JSON.stringify(d);
     if (!same) { col[id] = d; changed++; }
   }
+  // Anything ParentSquare no longer lists goes away, but only for schools and kinds that were read this time.
   for (const id of Object.keys(col)) {
     const e = col[id];
-    if (e && e.src === 'parentsquare' && e.kind !== 'status' && !docs.has(id) && okIds.indexOf(e.sid) > -1) { delete col[id]; changed++; }
+    if (e && e.src === 'parentsquare' && e.kind !== 'status' && !docs.has(id) && okIds.indexOf(e.sid) > -1 && !skip.has(e.sid + '|' + e.kind)) { delete col[id]; changed++; }
+  }
+  // Appointments you signed up for also go on the calendar, in that child's color, marked as coming from the school.
+  const evs = state.data.events;
+  for (const [id, d] of docs) {
+    if (d.kind !== 'signup') continue;
+    const ev = { title: d.title, allDay: false, sd: d.sd, ed: d.sd, st: d.st, et: d.et, loc: '', who: memberIdByName(d.childName), src: 'parentsquare', cal: d.school, source: 'school', sid: d.sid };
+    if (JSON.stringify(evs[id]) !== JSON.stringify(ev)) { evs[id] = ev; changed++; }
+  }
+  for (const id of Object.keys(evs)) {
+    const e = evs[id];
+    if (e && e.src === 'parentsquare' && !docs.has(id) && okIds.indexOf(e.sid) > -1 && !skip.has(e.sid + '|signup')) { delete evs[id]; changed++; }
   }
   const posts = Object.keys(col).filter((id) => col[id] && col[id].kind === 'post').sort((a, b) => String(col[b].at).localeCompare(String(col[a].at)));
   for (const id of posts.slice(60)) { delete col[id]; changed++; }
@@ -334,7 +350,8 @@ function startParentSquare() {
   const ps = parentsquare.create({
     base: process.env.PS_BASE, user: process.env.PARENTSQUARE_USER, password: process.env.PARENTSQUARE_PASSWORD, schools,
     minLoginGapMs: process.env.PS_LOGIN_GAP_MS ? parseInt(process.env.PS_LOGIN_GAP_MS, 10) : undefined,
-    onData: applySchool,
+    onData: applySchool, tz: smsTz(), preview: process.env.PS_MESSAGE_PREVIEW === '1',
+    teachers: (process.env.PS_TEACHERS || '').split(',').map((x) => { const i = x.indexOf(':'); return i > 0 ? { child: x.slice(0, i).trim(), name: x.slice(i + 1).trim() } : null; }).filter((x) => x && x.child && x.name),
     log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
   });
   const run = () => ps.poll().catch((e) => console.error('ParentSquare poll failed: ' + e.message));

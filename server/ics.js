@@ -271,4 +271,4 @@ function build(text, opts) {
   return out;
 }
 
-module.exports = { build, parseIcs };
+module.exports = { build, parseIcs, toInstant, validTz };
