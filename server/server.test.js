@@ -137,6 +137,45 @@ test('keeps only the newest BACKUP_KEEP backups and skips unchanged ones', async
   }
 });
 
+test('syncs a calendar feed into events, follows changes, and never logs the link', async () => {
+  const soon = new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10).replace(/-/g, '');
+  const cal = (titles) => 'BEGIN:VCALENDAR\r\nX-WR-TIMEZONE:America/Los_Angeles\r\n' + titles.map((t, i) =>
+    'BEGIN:VEVENT\r\nUID:t' + i + '\r\nSUMMARY:' + t + '\r\nDTSTART;VALUE=DATE:' + soon + '\r\nEND:VEVENT\r\n').join('') + 'END:VCALENDAR\r\n';
+  let feed = cal(['Feed one', 'Feed two']);
+  const feedSrv = http.createServer((q, r) => { r.end(q.url.includes('secret-token') ? feed : 'nope'); });
+  await new Promise((r) => feedSrv.listen(0, '127.0.0.1', r));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kb-cal-'));
+  const p = 20000 + Math.floor(Math.random() * 1000);
+  const url = 'http://127.0.0.1:' + feedSrv.address().port + '/cal/secret-token/basic.ics';
+  const c = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
+    env: Object.assign({}, process.env, { PORT: String(p), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), ICS_URLS: 'Test|' + url, ICS_MINUTES: '0.02', BACKUP_HOURS: '0' })
+  });
+  let out = '';
+  c.stdout.on('data', (d) => { out += d; });
+  c.stderr.on('data', (d) => { out += d; });
+  const state = () => new Promise((resolve) => {
+    http.get({ host: '127.0.0.1', port: p, path: '/api/state' }, (res) => {
+      const b = []; res.on('data', (x) => b.push(x)); res.on('end', () => resolve(JSON.parse(Buffer.concat(b).toString())));
+    }).on('error', () => resolve(null));
+  });
+  const titles = async () => { const s = await state(); return s ? Object.values(s.data.events).map((e) => e.title).sort() : []; };
+  const until = async (want) => { for (let i = 0; i < 100; i++) { const t = await titles(); if (JSON.stringify(t) === JSON.stringify(want)) return t; await new Promise((r) => setTimeout(r, 100)); } return titles(); };
+  try {
+    assert.deepStrictEqual(await until(['Feed one', 'Feed two']), ['Feed one', 'Feed two']);
+    const s = await state();
+    const e = Object.values(s.data.events)[0];
+    assert.strictEqual(e.src, 'gcal');
+    assert.strictEqual(e.cal, 'Test');
+    feed = cal(['Feed two']);
+    assert.deepStrictEqual(await until(['Feed two']), ['Feed two']);
+    assert.ok(!out.includes('secret-token'), 'the feed link leaked into the log');
+  } finally {
+    await new Promise((r) => { c.on('exit', r); c.kill('SIGTERM'); });
+    feedSrv.close();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test('data survives a restart', async () => {
   await req('PUT', '/api/members/m1', JSON.stringify({ name: 'Test Kid' }), JSON_H);
   await stopServer();

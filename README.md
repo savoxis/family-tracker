@@ -24,6 +24,8 @@ UnRAID: copy `deploy/unraid/kitchen-board.xml` to `/boot/config/plugins/dockerMa
 
 There is no login. Keep it on the home network.
 
+Google Calendar: in Google Calendar open the calendar's Settings and sharing, Integrate calendar, and copy the "Secret address in iCal format". Give it to the server as `ICS_URLS=Family|https://...basic.ics` (several calendars: separate with commas, each as `Label|url`). The server reads it every 15 minutes (`ICS_MINUTES`) and keeps the events from 45 days back to 200 days ahead on the board, repeats included, in `BOARD_TZ` (default: the calendar's own zone). It is read-only: those events have ids starting `gcal-` and edits made to them on the board are overwritten at the next sync. Events typed in on the board are never touched. The link is a secret: keep it in an env file on the host (for Docker, `--env-file`), never in the repo. If it leaks, press Reset next to it in Google Calendar and update the env file.
+
 Backups: the server copies the board to `<data dir>/backups/board-<UTC time>.json` at start and every 6 hours, skips it when nothing changed, and keeps the newest 28. Set `BACKUP_HOURS` (0 turns it off) and `BACKUP_KEEP` to change that. To restore, stop the container and copy a backup over `board.json`.
 
 ## Android

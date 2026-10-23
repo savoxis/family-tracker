@@ -16,12 +16,20 @@
  * Backups: a copy of the board goes to DATA_DIR/backups/board-<UTC time>.json at start and then
  * every BACKUP_HOURS, skipped when nothing changed, newest BACKUP_KEEP files kept.
  *
+ * Google Calendar: set ICS_URLS to one or more "secret address in iCal format" links, written as
+ * Label|https://... and separated by commas or new lines. The server reads them every
+ * ICS_MINUTES and keeps matching events (ids starting gcal-) in the events collection, so the
+ * page needs nothing extra. Read-only: edits to those events on the board are overwritten at the
+ * next sync. The links are secrets, so they are never logged or served.
+ *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
- *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28)
+ *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
+ *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC)
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const ics = require('./ics');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -34,6 +42,13 @@ const BACKUP_DIR = path.join(DATA_DIR, 'backups');
 const BACKUP_MS = Math.round(parseFloat(process.env.BACKUP_HOURS || '6') * 3600 * 1000) || 0;
 const BACKUP_KEEP = Math.max(1, parseInt(process.env.BACKUP_KEEP || '28', 10) || 28);
 const BACKUP_RE = /^board-\d{8}-\d{6}\.json$/;
+const ICS_MS = Math.max(1000, Math.round(parseFloat(process.env.ICS_MINUTES || '15') * 60 * 1000) || 900000);
+const ICS_FEEDS = (process.env.ICS_URLS || '').split(/[\r\n,]+/).map((s) => s.trim()).filter(Boolean).map((s, i) => {
+  const k = s.indexOf('|');
+  const label = (k > 0 ? s.slice(0, k) : 'Calendar ' + (i + 1)).trim();
+  const url = (k > 0 ? s.slice(k + 1) : s).trim().replace(/^webcal:/i, 'https:');
+  return /^https?:\/\//i.test(url) ? { label, url } : null;
+}).filter(Boolean);
 const MAX_BODY = 256 * 1024;
 const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -115,6 +130,58 @@ async function backup() {
     console.error('Backup failed: ' + e.message);
     return null;
   }
+}
+
+/* ---------- google calendar (read-only iCal feeds) ---------- */
+async function fetchFeed(url) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), 20000);
+  try {
+    const r = await fetch(url, { signal: ctl.signal });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const text = await r.text();
+    if (text.length > 8e6) throw new Error('feed too large');
+    if (!text.includes('BEGIN:VCALENDAR')) throw new Error('not a calendar');
+    return text;
+  } finally { clearTimeout(timer); }
+}
+
+// Never put the URL in a message: Node's own errors can echo it, so only a short code is shown.
+const feedError = (e) => (e && e.cause && e.cause.code) || (e && e.name === 'AbortError' ? 'timeout' : (e && e.message) || 'error');
+
+function applyFeed(label, docs) {
+  const events = state.data.events;
+  let changed = 0;
+  for (const [id, d] of docs) {
+    if (JSON.stringify(events[id]) !== JSON.stringify(d)) { events[id] = d; changed++; }
+  }
+  for (const id of Object.keys(events)) {
+    if (events[id] && events[id].src === 'gcal' && events[id].cal === label && !docs.has(id)) { delete events[id]; changed++; }
+  }
+  if (changed) { state.rev += 1; persist().catch((e) => console.error('Could not save calendar events: ' + e.message)); }
+  return changed;
+}
+
+async function syncCalendars() {
+  for (const feed of ICS_FEEDS) {
+    try {
+      const docs = ics.build(await fetchFeed(feed.url), { label: feed.label, boardTz: process.env.BOARD_TZ });
+      const changed = applyFeed(feed.label, docs);
+      if (changed) console.log('Calendar "' + feed.label + '": ' + docs.size + ' events, ' + changed + ' changed');
+    } catch (e) {
+      console.error('Calendar "' + feed.label + '" sync failed: ' + feedError(e));
+    }
+  }
+}
+
+function dropOrphanCalendarEvents() {
+  const labels = new Set(ICS_FEEDS.map((f) => f.label));
+  let n = 0;
+  for (const id of Object.keys(state.data.events)) {
+    const e = state.data.events[id];
+    if (e && e.src === 'gcal' && !labels.has(e.cal)) { delete state.data.events[id]; n++; }
+  }
+  if (n) { state.rev += 1; persist().catch(() => {}); }
 }
 
 /* ---------- http helpers ---------- */
@@ -219,6 +286,12 @@ function start() {
     if (BACKUP_MS > 0) {
       backup();
       setInterval(backup, BACKUP_MS).unref();
+    }
+    dropOrphanCalendarEvents();
+    if (ICS_FEEDS.length) {
+      console.log('Calendar sync on for: ' + ICS_FEEDS.map((f) => f.label).join(', '));
+      syncCalendars();
+      setInterval(syncCalendars, ICS_MS).unref();
     }
   });
 }

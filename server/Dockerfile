@@ -1,7 +1,7 @@
 # Build from the repo root:  docker build -f server/Dockerfile -t kitchen-board .
 FROM node:22-alpine
 WORKDIR /app
-COPY server/server.js ./
+COPY server/server.js server/ics.js ./
 COPY web ./public
 RUN mkdir -p /data && chown node:node /data
 ENV PORT=8080 DATA_DIR=/data
