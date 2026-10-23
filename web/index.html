@@ -80,7 +80,7 @@ input{-webkit-user-select:text;user-select:text}
 .nextup small{display:block;font-size:.8rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
 .nextup b{display:block;font-size:1.35rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .nextup em{display:block;font-style:normal;font-size:1.05rem;font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.apv{min-height:4.2rem;border-radius:1.4rem;padding:.4rem 1.4rem;font-size:1.2rem;font-weight:800}
+.apvchip{min-height:4.2rem;border-radius:1.4rem;padding:.4rem 1.4rem;font-size:1.2rem;font-weight:800}
 .btn.primary .cnt{background:var(--accent-ink);color:var(--accent)}
 
 /* header */
@@ -479,6 +479,18 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
 .rt.done .rt-n{text-decoration:line-through;color:var(--ink2)}
 .card.pics .rt-i{font-size:2.2rem}
 .hasrt .chore{min-height:3.9rem}
+.rt-tabs{display:flex;background:var(--panel2);border-radius:1.1rem;padding:.25rem;gap:.15rem}
+.rt-tab{flex:1;min-height:2.9rem;border:0;border-radius:.85rem;background:transparent;color:var(--ink2);font-weight:700;font-size:1.05rem;display:flex;align-items:center;justify-content:center;gap:.5rem;padding:0 .4rem}
+.rt-tab small{font-size:.85rem;font-weight:800;opacity:.85}
+.rt-tab.on{background:var(--ink);color:var(--bg)}
+.doneall{display:flex;align-items:center;gap:.9rem;width:100%;text-align:left;border:2px solid transparent;border-radius:1.2rem;padding:.8rem 1rem;background:color-mix(in srgb,var(--mc) 14%,var(--panel))}
+.da-c{flex:none;width:3.2rem;height:3.2rem;border-radius:50%;background:var(--mc);color:#fff;display:grid;place-items:center}
+.da-c .ic{width:1.8rem;height:1.8rem;stroke-width:3.2}
+.da-t{flex:1;min-width:0;line-height:1.2}
+.da-t b{display:block;font-family:var(--f-display);font-weight:700;font-size:1.55rem}
+.da-t small{display:block;color:var(--ink2);font-weight:600;font-size:1.05rem}
+.list.folded{flex:none}
+.foldaway{align-self:flex-start}
 </style>
 
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -522,7 +534,7 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <div class="wxweek" id="wxweek" role="group" aria-label="Weather this week" hidden></div>
   <div class="grow"></div>
   <button class="nextup" id="nextup" data-act="nextEv" hidden></button>
-  <button class="btn primary apv" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
+  <button class="btn primary apvchip" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
   <div class="tmrs" id="tmrs"></div>
 </header>
 <div class="notice" id="notice" hidden></div>
@@ -556,11 +568,11 @@ var S = {
   ready:false, store:null, storeKind:'',
   members:[], chores:[], rewards:[], ledger:[], events:[], meals:[], groceries:[], notes:[], school:[], goal:null, view:[], cfg:{}, cel:null,
   idx:{done:new Map(), pend:new Map(), rt:new Set(), bal:{}},
-  ui:{overlay:null, tab:'family', weekOffset:0, monthOffset:0, calMode:'week', day:null, choreFor:null, rm:null, confirm:null, del:null, editChore:null, event:null},
+  ui:{rtab:{}, exp:{}, overlay:null, tab:'family', weekOffset:0, monthOffset:0, calMode:'week', day:null, choreFor:null, rm:null, confirm:null, del:null, editChore:null, event:null},
   pop:null, undo:null
 };
 var db = null;
-var lastMin = -1;
+var lastMin = -1, lastPh = '';
 var ptrDown = false, pendingOv = false, lastDay = '', lastTouch = Date.now();
 
 /* ---------- helpers ---------- */
@@ -667,17 +679,33 @@ function toggleRoutine(mid, cid){
 }
 function partLabel(p){ return p === 'aft' ? 'After school' : p === 'pm' ? 'Bedtime' : 'Morning'; }
 var ROUTINE_IDEAS = ['Brush teeth','Get dressed','Wash hands','Pack backpack','Put on pajamas','Read a book','Wash face','Shoes on'];
-function routineHtml(m, today){
+// Where the day splits into morning, after school and bedtime (Setup > Display; noon and 6:30 pm unless changed).
+function splitMin(k, dflt){ var p = String((S.cfg && S.cfg[k]) || dflt).split(':'); return (+p[0] || 0) * 60 + (+p[1] || 0); }
+function phaseNow(d){
+  var m = d.getHours() * 60 + d.getMinutes();
+  return m < splitMin('splitAft', '12:00') ? 'am' : m < splitMin('splitPm', '18:30') ? 'aft' : 'pm';
+}
+var RGROUPS = [['am','Morning'],['aft','After school'],['pm','Bedtime']];
+// The routines this person has today, grouped by part of the day, each with what is done.
+function routineGroups(m, today){
   var items = sortBy(S.chores.filter(function(c){ return c.routine && (c.memberIds||[]).indexOf(m.id) > -1 && applies(c, today, m.id); }), function(c){ return (c.order||0)+'|'+c.title; });
-  if(!items.length) return '';
-  return '<div class="rts">'+[['am','Morning'],['aft','After school'],['pm','Bedtime']].map(function(g){
-    var l = items.filter(function(c){ return (c.part || 'am') === g[0]; });
-    if(!l.length) return '';
-    return '<div class="rt-g"><span class="rt-h">'+g[1]+'</span>'+l.map(function(c){
-      var done = S.idx.rt.has(m.id+'|'+period(c, today)+'_'+c.id);
-      return '<button class="rt'+(done ? ' done' : '')+'" role="checkbox" aria-checked="'+done+'" data-act="toggleRt" data-m="'+m.id+'" data-c="'+c.id+'">'+(iconOf(c) ? '<span class="rt-i" aria-hidden="true">'+glyph(iconOf(c))+'</span>' : '')+'<span class="rt-n">'+esc(c.title)+'</span><span class="rt-c"><svg class="ic s"><use href="#i-check"/></svg></span></button>';
-    }).join('')+'</div>';
-  }).join('')+'</div>';
+  return RGROUPS.map(function(g){
+    var l = items.filter(function(c){ return (c.part || 'am') === g[0]; }).map(function(c){ return {c:c, done:S.idx.rt.has(m.id+'|'+period(c, today)+'_'+c.id)}; });
+    return {id:g[0], name:g[1], list:l, done:l.filter(function(x){ return x.done; }).length};
+  });
+}
+function routineHtml(m, today, ph){
+  var groups = routineGroups(m, today).filter(function(g){ return g.list.length; });
+  if(!groups.length) return '';
+  var st = S.ui.rtab[m.id], want = st && st.ph === ph ? st.g : ph;
+  var sel = groups.filter(function(g){ return g.id === want; })[0] || groups[0];
+  var head = groups.length > 1
+    ? '<div class="rt-tabs" role="tablist">'+groups.map(function(g){ return '<button class="rt-tab'+(g === sel ? ' on' : '')+'" role="tab" aria-selected="'+(g === sel)+'" data-act="rtab" data-m="'+m.id+'" data-g="'+g.id+'">'+g.name+'<small>'+g.done+'/'+g.list.length+'</small></button>'; }).join('')+'</div>'
+    : '<span class="rt-h">'+sel.name+'</span>';
+  return '<div class="rts">'+head+'<div class="rt-g">'+sel.list.map(function(x){
+    var c = x.c;
+    return '<button class="rt'+(x.done ? ' done' : '')+'" role="checkbox" aria-checked="'+x.done+'" data-act="toggleRt" data-m="'+m.id+'" data-c="'+c.id+'">'+(iconOf(c) ? '<span class="rt-i" aria-hidden="true">'+glyph(iconOf(c))+'</span>' : '')+'<span class="rt-n">'+esc(c.title)+'</span><span class="rt-c"><svg class="ic s"><use href="#i-check"/></svg></span></button>';
+  }).join('')+'</div></div>';
 }
 function say(text){
   try { var u = new SpeechSynthesisUtterance(text); u.rate = .85; speechSynthesis.cancel(); speechSynthesis.speak(u); return true; }
@@ -685,7 +713,7 @@ function say(text){
 }
 function sayLeft(mid){
   var m = S.members.filter(function(x){ return x.id === mid; })[0]; if(!m) return;
-  var now = new Date(), h = now.getHours(), part = h < 11 ? 'am' : h < 17 ? 'aft' : 'pm', left = [];
+  var now = new Date(), part = phaseNow(now), left = [];
   S.chores.forEach(function(c){
     if((c.memberIds||[]).indexOf(mid) < 0 || !applies(c, now, mid)) return;
     if(c.routine){ if((c.part || 'am') === part && !S.idx.rt.has(mid+'|'+period(c, now)+'_'+c.id)) left.push(c.title); }
@@ -1144,6 +1172,8 @@ function moreTab(){
     + '<div class="addrow"><button class="btn" data-act="zoom" data-v="-10" aria-label="Smaller">A-</button><b style="min-width:4rem;text-align:center">'+zoomVal()+'%</b><button class="btn" data-act="zoom" data-v="10" aria-label="Bigger">A+</button><button class="btn" data-act="zoom" data-v="100">Reset</button></div>'
     + '<span class="lbl" style="margin-top:1.2rem">Streak bonus</span><p class="hint" style="margin:.2rem 0 .6rem">Extra stars when someone finishes every daily chore several days in a row. Set days to 0 to turn it off.</p>'
     + '<div class="addrow"><span class="hint" style="margin:0">Every</span><input class="inp num" id="b-days" type="number" min="0" max="60" inputmode="numeric" value="'+((S.cfg && S.cfg.bonusDays) || 0)+'"><span class="hint" style="margin:0">days, add</span><input class="inp num" id="b-stars" type="number" min="1" max="100" inputmode="numeric" value="'+((S.cfg && S.cfg.bonusStars) || 3)+'"><span class="hint" style="margin:0">stars</span><button class="btn" data-act="bonusSave">Save</button></div>'
+    + '<span class="lbl" style="margin-top:1.2rem">Day parts</span><p class="hint" style="margin:.2rem 0 .6rem">Where the day splits. Routines open on the part of the day it is now.</p>'
+    + '<div class="addrow"><span class="hint" style="margin:0">After school from</span><input class="inp" id="d-aft" type="time" value="'+esc((S.cfg && S.cfg.splitAft) || '12:00')+'" style="max-width:9rem"><span class="hint" style="margin:0">Bedtime from</span><input class="inp" id="d-pm" type="time" value="'+esc((S.cfg && S.cfg.splitPm) || '18:30')+'" style="max-width:9rem"><button class="btn" data-act="splitSave">Save</button></div>'
     + '<span class="lbl" style="margin-top:1.2rem">Reminders</span><p class="hint" style="margin:.2rem 0 .6rem">A chime and a spoken message once a day at these times.</p>'
     + (((S.cfg && S.cfg.reminders) || []).map(function(r, i){ return '<div class="addrow"><b style="min-width:5rem">'+esc(r.t)+'</b><span class="hint" style="margin:0;flex:1">'+esc(r.text)+'</span><button class="btn sm" data-act="remDel" data-i="'+i+'">Remove</button></div>'; }).join(''))
     + '<div class="addrow"><input class="inp" id="r-time" type="time" value="07:30" style="max-width:9rem"><input class="inp" id="r-text" placeholder="Shoes and backpack" maxlength="40"><button class="btn primary" data-act="remAdd">Add</button></div>'
@@ -1393,7 +1423,7 @@ function renderChores(){
     setHtml(el, '<div class="empty" style="grid-column:1/-1"><h3>Who lives here?</h3><div>Add your family and their chores, and this side of the board comes alive.</div><div><button class="btn primary" data-act="startSetup">Add the family</button></div></div>');
     return;
   }
-  var today = new Date();
+  var today = new Date(), ph = phaseNow(today);
   var members = sortBy(S.members, function(m){ return (m.order||0)+'|'+m.name; });
   /* grown-ups with no chores do not need a card; if nobody has chores yet, show everyone */
   var withChores = members.filter(function(m){ return S.chores.some(function(c){ return (c.memberIds||[]).indexOf(m.id) > -1; }); });
@@ -1412,15 +1442,22 @@ function renderChores(){
     }).join('');
     var nd = list.filter(function(c){ return S.idx.done.has(m.id+'|'+period(c, today)+'_'+c.id); }).length;
     var all = list.length > 0 && nd === list.length;
-    var pct = list.length ? Math.round(nd/list.length*100) : 0;
-    var sub = !list.length ? 'Nothing today' : all ? '<span class="tag"><svg class="ic s"><use href="#i-check"/></svg>All done</span>' : nd+' of '+list.length+' done';
+    var rg = routineGroups(m, today).filter(function(g){ return g.id === ph; })[0], rtN = rg ? rg.list.length : 0, rtD = rg ? rg.done : 0;
+    var pct = list.length + rtN ? Math.round((nd + rtD) / (list.length + rtN) * 100) : 0;
+    var sub = !list.length ? 'Nothing today' : all ? '<span class="tag"><svg class="ic s"><use href="#i-check"/></svg>All chores done</span>' : nd+' of '+list.length+' done';
+    if(rtN && !all) sub += ' &middot; '+rtD+' of '+rtN+' '+partLabel(ph).toLowerCase();
+    var earnedToday = list.reduce(function(a, c){ return a + (S.idx.done.has(m.id+'|'+period(c, today)+'_'+c.id) ? (c.stars||1) : 0); }, 0);
+    var fold = all && !S.ui.exp[m.id];
+    var listHtml = fold
+      ? '<button class="doneall" data-act="expDone" data-m="'+m.id+'" aria-label="All chores done. Show them."><span class="da-c"><svg class="ic s"><use href="#i-check"/></svg></span><span class="da-t"><b>All chores done</b><small>'+plural(list.length, 'chore')+' finished today</small></span><span class="cs">+'+earnedToday+starIc()+'</span></button>'
+      : (rows || '<div class="nochores">No chores today. Enjoy it.</div>') + (all ? '<button class="btn sm foldaway" data-act="expDone" data-m="'+m.id+'">Fold away</button>' : '');
     var hasChores = S.chores.some(function(c){ return !c.routine && (c.memberIds||[]).indexOf(m.id) > -1; });
     var sk = hasChores ? streak(m) : 0, ws = hasChores ? weekStars(m.id) : 0;
     var stats = hasChores ? '<p class="st"><span>This week '+ws+starIc()+'</span>'+(sk > 1 ? '<span>'+sk+' day streak</span>' : '')+'</p>' : '';
     return '<article class="card'+(all ? ' alldone' : '')+(m.pics ? ' pics' : '')+(S.chores.some(function(c){ return c.routine && (c.memberIds||[]).indexOf(m.id) > -1 && applies(c, today, m.id); }) ? ' hasrt' : '')+'" style="--mc:'+m.color+'">'
       + '<div class="card-h"><div class="ring" style="--p:'+pct+'">'+avatar(m)+'</div><div class="who"><h3>'+esc(m.name)+'</h3><p>'+sub+'</p>'+stats+'</div>'+(m.pics ? '<button class="spk" data-act="say" data-m="'+m.id+'" aria-label="Read my list to me">&#128266;</button>' : '')+'<span class="bal" title="Stars saved">'+balance(m.id)+starIc()+(rateC() ? '<em>'+usd(balance(m.id))+'</em>' : '')+'</span></div>'
-      + '<div class="list">'+(rows || '<div class="nochores">No chores today. Enjoy it.</div>')+'</div>'
-      + routineHtml(m, today)
+      + '<div class="list'+(fold ? ' folded' : '')+'">'+listHtml+'</div>'
+      + routineHtml(m, today, ph)
       + (S.cel && S.cel.mid === m.id ? celebrate(m) : '')
       + '</article>';
   }).join('');
@@ -2166,6 +2203,13 @@ var H = {
   quickRoutine:function(t){ addChore(t.dataset.t, true); },
   rpart:function(t){ S.ui.rpart = t.dataset.v; renderOverlay(true); },
   toggleRt:function(t){ toggleRoutine(t.dataset.m, t.dataset.c); },
+  rtab:function(t){ S.ui.rtab[t.dataset.m] = {g:t.dataset.g, ph:phaseNow(new Date())}; renderChores(); },
+  expDone:function(t){ S.ui.exp[t.dataset.m] = !S.ui.exp[t.dataset.m]; renderChores(); },
+  splitSave:function(){
+    var a = $('#d-aft').value || '12:00', p = $('#d-pm').value || '18:30';
+    if(a >= p){ toast('After school has to start before bedtime'); return; }
+    setCfg({splitAft:a, splitPm:p}); toast('Day parts saved'); renderAll();
+  },
   toRoutine:function(t){ patchChore(t.dataset.id, function(n){ n.routine = true; n.stars = 0; n.weekly = false; if(!n.part) n.part = 'am'; }); S.ui.editChore = null; renderOverlay(true); toast('Moved to Routines'); },
   toChore:function(t){ patchChore(t.dataset.id, function(n){ delete n.routine; delete n.part; n.stars = starGuess(n.title); }); S.ui.editChore = null; renderOverlay(true); toast('Now a chore with stars'); },
   choreRot:function(t){ patchChore(t.dataset.id, function(n){ if(t.dataset.v) n.rot = t.dataset.v; else delete n.rot; }); renderOverlay(true); },
@@ -2317,6 +2361,7 @@ function tick(){
   var k = dkey(d);
   if(lastDay && k !== lastDay){ lastDay = k; renderAll(); }
   lastDay = k;
+  var phNow = phaseNow(d); if(S.ready && lastPh && phNow !== lastPh) renderChores(); lastPh = phNow;
   applyDisplay();
   checkTimers(); checkReminders();
   if(PH.on) svClock();
