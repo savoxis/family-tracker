@@ -121,6 +121,21 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .sc .ln .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc .ln i{flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--c);align-self:center}
 .sc .none{margin:0;color:var(--ink2);font-weight:600}
+.agenda{flex:1 1 auto;min-height:0;padding:1.2rem 1.3rem 1.3rem;gap:.55rem;overflow:auto}
+.agenda .sc-h h3{font-size:2.1rem;letter-spacing:-.02em}
+.sc-n{font-size:1.05rem;font-weight:700;color:var(--ink2)}
+.agenda .ln{font-size:1.3rem;padding:.2rem 0;gap:.7rem}
+.agenda .ln .t{min-width:5rem;font-size:1.05rem}
+.agenda small.k{font-size:.85rem;letter-spacing:.12em;color:var(--ink2)}
+.ag-k{margin-top:.4rem}
+.ag-sep{height:1px;background:var(--line);margin:.5rem 0 .3rem;flex:none}
+.glb{display:flex;flex-direction:column;gap:.45rem;align-items:flex-start;text-align:left;width:100%;border:0;background:none;padding:0;color:inherit}
+.glb .gl{width:100%}
+.agenda .gl span{font-size:1.1rem}
+.agenda .dn{border-radius:1.2rem;padding:.7rem 1rem}
+.agenda .dn small.k{margin:0 0 .1rem;color:var(--star-ink)}
+.agenda .dn b{font-size:1.8rem}
+.agenda .dn.sm b{font-size:1.3rem}
 .sp-g{margin:0 0 1.1rem}
 .sp-gh{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.2rem 0 .5rem}
 .sp-gh h3{margin:0;font-family:var(--f-display);font-weight:600;font-size:1.3rem}
@@ -154,16 +169,19 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .gl span{background:var(--panel2);border-radius:2rem;padding:.25rem .8rem;font-weight:600;font-size:1.05rem}
 .tonight{display:none!important}
 #cal{display:none}
-body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inset-top,0px)) max(.8rem,env(safe-area-inset-right,0px)) max(.8rem,env(safe-area-inset-bottom,0px)) max(.8rem,env(safe-area-inset-left,0px));z-index:40;overflow:auto}
+body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inset-top,0px)) max(.8rem,env(safe-area-inset-right,0px)) max(.8rem,env(safe-area-inset-bottom,0px)) max(.8rem,env(safe-area-inset-left,0px));left:calc(max(1.8rem,env(safe-area-inset-left,0px)) + 8rem);z-index:40;overflow:auto}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:1.5rem;box-shadow:var(--shadow);min-height:0;min-width:0}
 .cal{display:flex;flex-direction:column;padding:1.2rem 1.2rem 1rem}
 .cal-head{display:flex;align-items:center;gap:.7rem;margin-bottom:1rem}
 .cal-head h2{margin:0;font-family:var(--f-display);font-weight:600;font-size:2rem;flex:1;min-width:0;display:flex;align-items:baseline;gap:.8rem}
 .cal-head h2 small{font-family:var(--f-body);font-size:1.05rem;font-weight:600;color:var(--ink2)}
 .nav{width:3.6rem;padding:0}
-.week{flex:1;min-height:0;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:.6rem;align-items:stretch}
+.week{flex:1;min-height:0;display:grid;grid-template-columns:var(--wk,repeat(7,minmax(0,1fr)));gap:.6rem;align-items:start;align-content:start;overflow:auto}
 .day{background:var(--panel2);border-radius:1.1rem;padding:.7rem .6rem .6rem;display:flex;flex-direction:column;gap:.55rem;min-width:0;min-height:0}
 .day.today{background:color-mix(in srgb,var(--accent) 9%,var(--panel));box-shadow:inset 0 0 0 2px var(--accent)}
+.day.today .ev-n{font-size:1.25rem}
+.day.today .ev-t{font-size:.95rem}
+.day.past{background:none;box-shadow:inset 0 0 0 1px var(--line)}
 .day.past .evs{opacity:.7}
 .day > header{display:flex;align-items:flex-start;justify-content:space-between;gap:.3rem}
 .dh{display:flex;flex-direction:column;align-items:flex-start;gap:.05rem;min-width:0}
@@ -181,11 +199,11 @@ body.calopen #cal{display:flex;position:fixed;inset:max(.8rem,env(safe-area-inse
 .ev{display:block;width:100%;text-align:left;border:0;border-radius:.75rem;padding:.5rem .6rem .55rem .85rem;background:var(--panel);background:color-mix(in srgb,var(--c) 15%,var(--panel));box-shadow:inset .3rem 0 0 var(--c);color:var(--ink);min-height:3.2rem;overflow-wrap:anywhere}
 .ev.all{background:color-mix(in srgb,var(--c) 30%,var(--panel));font-weight:700}
 .ev-t{display:block;font-size:.85rem;font-weight:700;color:var(--ink2);font-variant-numeric:tabular-nums}
-.ev-n{display:block;font-size:1.08rem;font-weight:600;line-height:1.2}
+.ev-n{display:block;font-size:1.12rem;font-weight:600;line-height:1.2}
 .rp{margin-left:.35rem;color:var(--ink2);font-weight:700}
 .meal{display:block;width:100%;min-height:3.2rem;border:0;border-radius:.75rem;padding:.4rem .6rem;text-align:left;background:color-mix(in srgb,var(--star) 17%,var(--panel));color:var(--ink);overflow-wrap:anywhere;font-weight:600;font-size:1.02rem;line-height:1.2}
 .meal small{display:block;font-size:.72rem;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--star-ink)}
-.meal.empty-m{background:none;color:var(--ink2);opacity:.75;font-weight:600;text-align:left;box-shadow:inset 0 1px 0 var(--line);border-radius:0;padding-top:.7rem}
+.meal.empty-m{background:none;color:var(--ink2);font-weight:600;text-align:left;border-radius:.75rem;min-height:2.6rem;padding:.4rem .6rem;box-shadow:inset 0 0 0 1px var(--line)}
 .legend{display:flex;flex-wrap:wrap;gap:.3rem 1.2rem;margin-top:.8rem;font-size:.95rem;color:var(--ink2);align-items:center}
 .legend span{display:inline-flex;align-items:center;gap:.4rem}
 .legend i{width:.8rem;height:.8rem;border-radius:50%;background:var(--c)}
@@ -341,6 +359,7 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
 @media (max-width:1000px) and (max-aspect-ratio:133/100), (max-width:1000px) and (max-height:399px){
   html,body{height:auto}
   body{min-height:100%;overflow:visible}
+  body.calopen #cal{left:max(.8rem,env(safe-area-inset-left,0px))}
   .shell{flex:none;flex-direction:column;gap:.8rem}
   .col{flex:none}
   .rail{width:auto;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:.5rem}
@@ -976,11 +995,13 @@ function renderCal(){
       + '<header><div class="dh"><span class="dow">'+label+'</span><span class="dnum">'+d.getDate()+'</span></div>'
       + '<button class="addev" data-act="newOn" data-d="'+dk+'" aria-label="Add event on '+esc(DAY_LONG[d.getDay()])+'">+</button></header>'
       + dayBadges(d, todayK)
-      + '<div class="evs">'+(evs || (dk < todayK ? '' : '<p class="none">No plans</p>'))+'</div>'
       + meal
+      + '<div class="evs">'+(evs || (dk < todayK ? '' : '<p class="none">No plans</p>'))+'</div>'
       + '</section>';
   }).join('');
-  setHtml(el, head + '<div class="week">'+cols+'</div>' + legendHtml());
+  var inWeek = todayK >= dkey(start) && todayK <= dkey(addDays(start, 6)), tdi = inWeek ? Math.round((parseKey(todayK) - parseKey(dkey(start))) / 864e5) : -1;
+  var tpl = [0,1,2,3,4,5,6].map(function(i){ return i === tdi ? 'minmax(0,1.6fr)' : 'minmax(0,1fr)'; }).join(' ');
+  setHtml(el, head + '<div class="week" style="--wk:'+tpl+'">'+cols+'</div>' + legendHtml());
 }
 
 /* ---------- day sheet (opened from the month view) ---------- */
@@ -1509,25 +1530,24 @@ function renderSide(){
   }
   var gs = S.groceries.filter(function(g){ return !g.done; });
   var gl = gs.slice(0, 8).map(function(g){ return '<span>'+esc(g.title)+'</span>'; }).join('') + (gs.length > 8 ? '<span>+ '+(gs.length-8)+' more</span>' : '');
-  var html = '<section class="sc"><div class="sc-h"><h3>Today</h3><button class="btn" data-act="openCal"><svg class="ic s"><use href="#i-cal"/></svg>Calendar</button></div>'
+  // One agenda in reading order: what is on, what to eat, what to buy, what school said.
+  var html = '<section class="sc agenda"><div class="sc-h"><h3>Today</h3><span class="sc-n">'+(te.length ? plural(te.length, 'thing') : 'Clear')+'</span></div>'
     + (tl || '<p class="none">Nothing else planned.</p>')
-    + (ne.length ? '<small class="k" style="margin-top:.3rem">Tomorrow</small>'+nl : '')
-    + '</section>'
-    + '<section class="sc"><div class="sc-h"><h3>Food</h3><button class="btn" data-act="openGroc"><svg class="ic s"><use href="#i-cart"/></svg>List'+(gs.length ? ' ('+gs.length+')' : '')+'</button></div>'
+    + (ne.length ? '<small class="k ag-k">Tomorrow</small>'+nl : '')
+    + '<div class="ag-sep"></div>'
     + dn(tk, 'Dinner tonight', '') + dn(tmk, 'Tomorrow', ' sm')
     + schoolLunchHtml(now)
-    + '<small class="k" style="margin-top:.3rem">Need from the store</small>'
-    + (gl ? '<div class="gl">'+gl+'</div>' : '<p class="none">Nothing on the list.</p>')
-    + '</section>';
+    + '<button class="glb" data-act="openGroc"><small class="k ag-k">Need from the store'+(gs.length ? ' ('+gs.length+')' : '')+'</small>'
+    + (gl ? '<span class="gl">'+gl+'</span>' : '<span class="none">Nothing on the list.</span>')+'</button>';
   if(S.school.length){
     var sp = schoolPosts().filter(function(p){ return Date.now() - new Date(p.at || 0).getTime() < 10 * 864e5; }), su = schoolUnreadTotal();
     var sl = sp.slice(0, 3).map(function(p){
       var c = p.child ? S.members.filter(function(m){ return m.id === p.child; })[0] : null;
       return '<button class="ln" data-act="openSchool"><i style="--c:'+(c ? c.color : 'var(--ink2)')+'"></i><span class="t">'+esc(spWhen(p.at))+'</span><span class="n">'+esc(p.title)+'</span></button>';
     }).join('');
-    html += '<section class="sc"><div class="sc-h"><h3>School</h3><button class="btn" data-act="openSchool">'+(su ? su+' unread' : 'All posts')+'</button></div>'
-      + (sl || '<p class="none">No new posts this week.</p>') + '</section>';
+    html += '<div class="ag-sep"></div><small class="k ag-k">From school'+(su ? ' ('+su+' unread)' : '')+'</small>' + (sl || '<p class="none">No new posts this week.</p>');
   }
+  html += '</section>';
   setHtml(el, html);
 }
 
