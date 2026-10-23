@@ -22,14 +22,23 @@
  * page needs nothing extra. Read-only: edits to those events on the board are overwritten at the
  * next sync. The links are secrets, so they are never logged or served.
  *
+ * Google Keep shopping list (unofficial, see keep.js and keepsync.js): set KEEP_EMAIL,
+ * KEEP_MASTER_TOKEN and KEEP_LIST (the list's title). The grocery list is then kept in step with
+ * that Keep list every KEEP_MINUTES and a few seconds after any grocery change on the board.
+ * KEEP_HEADERS names category headers that have no items yet (comma separated). KEEP_DRYRUN=1
+ * only logs what would change. The token is a secret and is never logged.
+ *
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
- *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC)
+ *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
+ *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN
  */
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const ics = require('./ics');
+const { Keep } = require('./keep');
+const keepsync = require('./keepsync');
 
 const PORT = parseInt(process.env.PORT || '8080', 10);
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
@@ -49,6 +58,9 @@ const ICS_FEEDS = (process.env.ICS_URLS || '').split(/[\r\n,]+/).map((s) => s.tr
   const url = (k > 0 ? s.slice(k + 1) : s).trim().replace(/^webcal:/i, 'https:');
   return /^https?:\/\//i.test(url) ? { label, url } : null;
 }).filter(Boolean);
+const KEEP_MS = Math.max(1000, Math.round(parseFloat(process.env.KEEP_MINUTES || '2') * 60 * 1000) || 120000);
+const KEEP_ON = !!(process.env.KEEP_EMAIL && process.env.KEEP_MASTER_TOKEN && process.env.KEEP_LIST);
+let keepSync = null;
 const MAX_BODY = 256 * 1024;
 const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
@@ -184,6 +196,32 @@ function dropOrphanCalendarEvents() {
   if (n) { state.rev += 1; persist().catch(() => {}); }
 }
 
+/* ---------- google keep shopping list (unofficial) ---------- */
+function applyKeepToBoard(p) {
+  const g = state.data.groceries;
+  for (const s of p.boardSet) if (g[s.id]) g[s.id] = Object.assign({}, g[s.id], { title: s.title, done: s.done });
+  for (const a of p.boardAdd) g[a.id] = { title: a.title, done: a.done, at: Date.now() };
+  for (const id of p.boardDel) delete g[id];
+  state.rev += 1;
+  persist().catch((e) => console.error('Could not save grocery changes: ' + e.message));
+}
+
+function startKeep() {
+  keepSync = keepsync.create({
+    keep: new Keep({ email: process.env.KEEP_EMAIL, masterToken: process.env.KEEP_MASTER_TOKEN, authUrl: process.env.KEEP_AUTH_URL, apiUrl: process.env.KEEP_API_URL }),
+    listTitle: process.env.KEEP_LIST,
+    headerNames: (process.env.KEEP_HEADERS || '').split(',').map((s) => s.trim()).filter(Boolean),
+    pairsFile: path.join(DATA_DIR, 'keep-sync.json'),
+    dryRun: process.env.KEEP_DRYRUN === '1',
+    board: () => new Map(Object.entries(state.data.groceries).map(([id, d]) => [id, { title: String(d.title || ''), done: !!d.done }])),
+    applyBoard: applyKeepToBoard,
+    log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
+  });
+  console.log('Keep sync on' + (process.env.KEEP_DRYRUN === '1' ? ' (dry run, nothing is written)' : ''));
+  keepSync.run();
+  setInterval(keepSync.run, KEEP_MS).unref();
+}
+
 /* ---------- http helpers ---------- */
 function send(res, status, obj, extra) {
   const body = JSON.stringify(obj);
@@ -242,6 +280,7 @@ async function api(req, res, parts) {
     }
     state.rev += 1;
     try { await persist(); } catch (e) { return send(res, 500, { error: 'could not save' }); }
+    if (coll === 'groceries' && keepSync) keepSync.soon();
     return send(res, 200, { rev: state.rev });
   }
   return send(res, 404, { error: 'not found' });
@@ -287,6 +326,7 @@ function start() {
       backup();
       setInterval(backup, BACKUP_MS).unref();
     }
+    if (KEEP_ON) startKeep();
     dropOrphanCalendarEvents();
     if (ICS_FEEDS.length) {
       console.log('Calendar sync on for: ' + ICS_FEEDS.map((f) => f.label).join(', '));
