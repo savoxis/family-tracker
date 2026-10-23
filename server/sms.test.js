@@ -70,7 +70,7 @@ test('a burst becomes one text, repeats and the daily cap are respected, the key
   const url = await fk.listen();
   const logs = [];
   let t = Date.UTC(2026, 9, 22, 12, 0, 0);
-  const s = sms.create({ key: 'good-key', to: ['5555550101', '5555550102'], url, batchMs: 30, dailyMax: 3, now: () => t, log: (m) => logs.push(m) });
+  const s = sms.create({ key: 'good-key', to: ['5555550101', '5555550102'], url, batchMs: 30, approveDelayMs: 30, dailyMax: 3, now: () => t, log: (m) => logs.push(m) });
   try {
     s.notify('approve', 'Ava', 'Homework'); s.notify('approve', 'Ava', 'Make bed'); s.notify('approve', 'Ava', 'Homework');
     await wait(250);
@@ -90,6 +90,29 @@ test('a burst becomes one text, repeats and the daily cap are respected, the key
     assert.strictEqual(fk.got.length, 8);
     const all = logs.join('\n');
     assert.ok(!all.includes('good-key') && !all.includes('5555550101') && all.includes('***0101'), all);
+  } finally { fk.srv.close(); }
+});
+
+test('approval texts wait for the delay and are dropped if already approved', async () => {
+  const fk = fakeTextbelt();
+  const url = await fk.listen();
+  const s = sms.create({ key: 'good-key', to: ['5555550101'], url, batchMs: 10, approveDelayMs: 120, log: () => {} });
+  try {
+    let bedStillWaiting = true;
+    s.notify('approve', 'Ava', 'Make bed', () => bedStillWaiting);
+    s.notify('approve', 'Ava', 'Homework', () => true);
+    await wait(60);
+    assert.strictEqual(fk.got.length, 0, 'nothing is sent before the delay is up');
+    bedStillWaiting = false; // a parent approved it on the board in the meantime
+    await wait(250);
+    assert.strictEqual(fk.got.length, 1);
+    assert.strictEqual(fk.got[0].message, 'Kitchen Board: Ava finished Homework. Needs your OK.');
+    s.notify('approve', 'Ben', 'Trash', () => false);
+    await wait(250);
+    assert.strictEqual(fk.got.length, 1, 'everything was approved, so no text at all');
+    s.notify('cash', 'Ben', 'Ice cream (3 stars)');
+    await wait(60);
+    assert.strictEqual(fk.got.length, 2, 'cash-ins are not held back');
   } finally { fk.srv.close(); }
 });
 
@@ -128,7 +151,7 @@ test('server texts the parents for approvals, cash-ins and the evening nudge', a
   } }));
   const proc = spawn(process.execPath, [path.join(__dirname, 'server.js')], {
     env: Object.assign({}, process.env, { PORT: String(port), DATA_DIR: dir, PUBLIC_DIR: path.join(__dirname, '..', 'web'), BACKUP_HOURS: '0',
-      TEXTBELT_KEY: 'good-key', SMS_TO: '(555) 555-0101, 555-555-0102', SMS_URL: url, SMS_BATCH_MS: '150', BOARD_TZ: 'UTC', SMS_REMIND_AT: hhmm })
+      TEXTBELT_KEY: 'good-key', SMS_TO: '(555) 555-0101, 555-555-0102', SMS_URL: url, SMS_BATCH_MS: '150', SMS_APPROVE_DELAY_MS: '700', BOARD_TZ: 'UTC', SMS_REMIND_AT: hhmm })
   });
   let log = '';
   proc.stdout.on('data', (d) => { log += d; });
@@ -146,7 +169,12 @@ test('server texts the parents for approvals, cash-ins and the evening nudge', a
     // a kid sends two chores for approval, they arrive as one text
     await put('/api/ledger/m1_2026-10', { memberId: 'm1', month: '2026-10', done: {}, spent: {}, rt: {}, pend: { '2026-10-22_c1': 1 } });
     await put('/api/ledger/m1_2026-10', { memberId: 'm1', month: '2026-10', done: {}, spent: {}, rt: {}, pend: { '2026-10-22_c1': 1, '2026-10-22_c2': 2 } });
-    assert.ok(await until(() => fk.got.slice(before).find((g) => /Ava finished Make bed and Homework\. Needs your OK\./.test(g.message))), 'no approval text: ' + JSON.stringify(fk.got.slice(before)));
+    await wait(300);
+    assert.strictEqual(fk.got.length, before, 'the approval text is held back for the delay');
+    // a grown-up approves Make bed on the board before the delay is up, so only Homework is still waiting
+    await put('/api/ledger/m1_2026-10', { memberId: 'm1', month: '2026-10', done: { '2026-10-22_c1': 1 }, spent: {}, rt: {}, pend: { '2026-10-22_c1': 0, '2026-10-22_c2': 2 } });
+    assert.ok(await until(() => fk.got.slice(before).find((g) => /Ava finished Homework\. Needs your OK\./.test(g.message))), 'no approval text: ' + JSON.stringify(fk.got.slice(before)));
+    assert.ok(!fk.got.slice(before).some((g) => /Make bed/.test(g.message)), 'texted about a chore that was already approved');
     assert.strictEqual(fk.got.slice(before).length, 2);
     const mid = fk.got.length;
     // a reward is cashed in

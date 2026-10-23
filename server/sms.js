@@ -74,6 +74,8 @@ function create(o) {
   const tz = o.tz || 'UTC';
   const now = o.now || Date.now;
   const batchMs = o.batchMs === undefined ? 30000 : o.batchMs;
+  // Approval requests wait, so a parent who approves on the board in the meantime is never texted.
+  const approveDelayMs = o.approveDelayMs === undefined ? 3600000 : o.approveDelayMs;
   const dailyMax = o.dailyMax || 12;
   const recent = new Map();
   const buckets = new Map();
@@ -117,21 +119,24 @@ function create(o) {
   function flush(bk) {
     const b = buckets.get(bk); buckets.delete(bk);
     if (!b) return;
-    if (b.kind === 'approve') send(b.who + ' finished ' + listWords(b.items) + '. Needs your OK.');
-    else send(b.who + ' cashed in ' + listWords(b.items) + '.');
+    // Anything that no longer needs saying (already approved) is dropped when the time comes.
+    const items = b.items.filter((i) => !i.check || i.check()).map((i) => i.text);
+    if (!items.length) return;
+    if (b.kind === 'approve') send(b.who + ' finished ' + listWords(items) + '. Needs your OK.');
+    else send(b.who + ' cashed in ' + listWords(items) + '.');
   }
 
-  // Collects quick bursts (a kid ticking three chores) into a single text.
-  function notify(kind, who, item) {
+  // Collects bursts (a kid ticking three chores) into a single text. check() says if it still matters at send time.
+  function notify(kind, who, text, check) {
     const bk = kind + '|' + who;
     let b = buckets.get(bk);
     if (!b) {
       b = { kind, who, items: [] };
       buckets.set(bk, b);
-      const timer = setTimeout(() => flush(bk), batchMs);
+      const timer = setTimeout(() => flush(bk), kind === 'approve' ? approveDelayMs : batchMs);
       if (timer.unref) timer.unref();
     }
-    if (b.items.indexOf(item) < 0) b.items.push(item);
+    if (!b.items.some((i) => i.text === text)) b.items.push({ text, check });
   }
 
   return { send, notify, flush: () => { for (const k of [...buckets.keys()]) flush(k); } };

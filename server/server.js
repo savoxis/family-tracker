@@ -29,14 +29,16 @@
  * only logs what would change. The token is a secret and is never logged.
  *
  * Text alerts to the parents (Textbelt, see sms.js): set TEXTBELT_KEY and SMS_TO (phone numbers,
- * comma separated). Texts go out when a chore needs approval and when a reward is cashed in. Set
+ * comma separated). Texts go out when a chore needs approval (after SMS_APPROVE_DELAY_MIN, 60, and
+ * only if it is still waiting then) and when a reward is cashed in. Set
  * SMS_REMIND_AT=HH:MM (board time) for a daily "chores left" nudge. SMS_DAILY_MAX (12) caps
  * texts per day, SMS_DRYRUN=1 only logs. The key and numbers are secrets and are never logged in full.
  *
  * ParentSquare (see parentsquare.js): PARENTSQUARE_USER, PARENTSQUARE_PASSWORD and PS_SCHOOLS
  * (school id and the child it belongs to, like 13482:Xander,13486:Bastian). The server signs in
- * itself, renews the session, and texts the parents about new school posts and unread messages,
- * naming the child. PS_MINUTES (15), PS_DRYRUN=1 only logs. The password is never logged.
+ * itself, renews the session, and keeps recent school posts and the unread message count in the
+ * school collection, tied to the right child, for the School view on the board. PS_MINUTES (15).
+ * The password is never logged.
  *
  * Calendar feeds can be tied to a family member with Label@Member|url (their events then show in
  * that person's color), and every synced event carries a source: google, school or calendar.
@@ -44,7 +46,7 @@
  * Env: PORT (8080), DATA_DIR (./data), PUBLIC_DIR (./public, else ../web),
  *      BACKUP_HOURS (6, 0 turns backups off), BACKUP_KEEP (28),
  *      ICS_URLS (none), ICS_MINUTES (15), BOARD_TZ (the calendar's own zone, else UTC),
- *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_MINUTES (15), PS_DRYRUN,
+ *      PARENTSQUARE_USER, PARENTSQUARE_PASSWORD, PS_SCHOOLS, PS_MINUTES (15),
  *      KEEP_EMAIL, KEEP_MASTER_TOKEN, KEEP_LIST, KEEP_HEADERS, KEEP_MINUTES (2), KEEP_DRYRUN,
  *      TEXTBELT_KEY, SMS_TO, SMS_REMIND_AT, SMS_DAILY_MAX (12), SMS_DRYRUN
  */
@@ -93,7 +95,7 @@ const SMS_TO = (process.env.SMS_TO || '').split(/[,;\r\n]+/).map((s) => s.replac
 const SMS_ON = !!(process.env.TEXTBELT_KEY && SMS_TO.length);
 let smsOut = null;
 const MAX_BODY = 256 * 1024;
-const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config'];
+const COLLECTIONS = ['members', 'chores', 'rewards', 'events', 'ledger', 'meals', 'groceries', 'notes', 'config', 'school'];
 const ID_RE = /^[A-Za-z0-9_.-]{1,80}$/;
 const TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -259,13 +261,15 @@ function smsTz() {
   try { new Intl.DateTimeFormat('en-US', { timeZone: tz }); return tz; } catch (e) { return 'UTC'; }
 }
 
-function smsLedger(before, after) {
+function smsLedger(before, after, docId) {
   for (const ev of sms.ledgerEvents(before, after)) {
     const m = state.data.members[ev.mid];
     const who = (m && m.name) || 'Someone';
     if (ev.kind === 'approve') {
       const c = state.data.chores[ev.key.split('_').slice(1).join('_')];
-      smsOut.notify('approve', who, (c && c.title) || 'a chore');
+      // Still waiting for a grown-up when the delay is up? Only then is a text sent.
+      const waiting = () => { const d = state.data.ledger[docId]; return !!d && (d.pend || {})[ev.key] > 0 && !((d.done || {})[ev.key] > 0); };
+      smsOut.notify('approve', who, (c && c.title) || 'a chore', waiting);
     } else {
       smsOut.notify('cash', who, ev.title + ' (' + ev.cost + (ev.cost === 1 ? ' star)' : ' stars)'));
     }
@@ -293,6 +297,7 @@ function startSms() {
     key: process.env.TEXTBELT_KEY, to: SMS_TO, tz: smsTz(), url: process.env.SMS_URL,
     dailyMax: parseInt(process.env.SMS_DAILY_MAX || '12', 10) || 12, dryRun: process.env.SMS_DRYRUN === '1',
     batchMs: process.env.SMS_BATCH_MS ? parseInt(process.env.SMS_BATCH_MS, 10) : undefined,
+    approveDelayMs: process.env.SMS_APPROVE_DELAY_MS ? parseInt(process.env.SMS_APPROVE_DELAY_MS, 10) : (process.env.SMS_APPROVE_DELAY_MIN ? Math.round(parseFloat(process.env.SMS_APPROVE_DELAY_MIN) * 60000) : undefined),
     log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
   });
   console.log('Text alerts on for ' + SMS_TO.length + ' number' + (SMS_TO.length === 1 ? '' : 's') + (process.env.SMS_DRYRUN === '1' ? ' (dry run)' : '')
@@ -301,7 +306,25 @@ function startSms() {
   setInterval(smsNudge, 60000).unref();
 }
 
-/* ---------- parentsquare: school posts and unread messages, told to the parents ---------- */
+/* ---------- parentsquare: school posts and unread messages for the School view ---------- */
+function applySchool(docs, okIds) {
+  const col = state.data.school;
+  let changed = 0;
+  for (const [id, d0] of docs) {
+    const d = d0.kind === 'status' ? d0 : Object.assign({}, d0, { child: memberIdByName(d0.childName) });
+    const old = col[id];
+    const same = d.kind === 'status' ? !!old && old.ok === d.ok && old.message === d.message : JSON.stringify(old) === JSON.stringify(d);
+    if (!same) { col[id] = d; changed++; }
+  }
+  for (const id of Object.keys(col)) {
+    const e = col[id];
+    if (e && e.src === 'parentsquare' && e.kind !== 'status' && !docs.has(id) && okIds.indexOf(e.sid) > -1) { delete col[id]; changed++; }
+  }
+  const posts = Object.keys(col).filter((id) => col[id] && col[id].kind === 'post').sort((a, b) => String(col[b].at).localeCompare(String(col[a].at)));
+  for (const id of posts.slice(60)) { delete col[id]; changed++; }
+  if (changed) { state.rev += 1; persist().catch((e) => console.error('Could not save school posts: ' + e.message)); }
+}
+
 function startParentSquare() {
   const schools = process.env.PS_SCHOOLS.split(',').map((s) => s.trim()).filter(Boolean).map((s) => {
     const i = s.indexOf(':');
@@ -310,9 +333,8 @@ function startParentSquare() {
   if (!schools.length) { console.error('ParentSquare: PS_SCHOOLS has no school ids (use 13482:Xander,13486:Bastian)'); return; }
   const ps = parentsquare.create({
     base: process.env.PS_BASE, user: process.env.PARENTSQUARE_USER, password: process.env.PARENTSQUARE_PASSWORD, schools,
-    stateFile: path.join(DATA_DIR, 'ps-seen.json'),
     minLoginGapMs: process.env.PS_LOGIN_GAP_MS ? parseInt(process.env.PS_LOGIN_GAP_MS, 10) : undefined,
-    notify: (m) => (smsOut && process.env.PS_DRYRUN !== '1' ? smsOut.send(m) : console.log('ParentSquare alert (' + (smsOut ? 'dry run' : 'texts are off') + '): ' + m)),
+    onData: applySchool,
     log: (m, isErr) => (isErr ? console.error(m) : console.log(m))
   });
   const run = () => ps.poll().catch((e) => console.error('ParentSquare poll failed: ' + e.message));
@@ -373,7 +395,7 @@ async function api(req, res, parts) {
       catch (e) { return send(res, e.status || 400, { error: 'bad body' }, { Connection: 'close' }); }
       const before = state.data[coll][id];
       state.data[coll][id] = body;
-      if (coll === 'ledger' && smsOut) { try { smsLedger(before, body); } catch (e) { console.error('Text alert failed: ' + e.message); } }
+      if (coll === 'ledger' && smsOut) { try { smsLedger(before, body, id); } catch (e) { console.error('Text alert failed: ' + e.message); } }
     } else if (req.method === 'DELETE') {
       delete state.data[coll][id];
     } else {

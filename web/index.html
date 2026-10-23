@@ -97,6 +97,18 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .sc .ln .n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sc .ln i{flex:none;width:.6rem;height:.6rem;border-radius:50%;background:var(--c);align-self:center}
 .sc .none{margin:0;color:var(--ink2);font-weight:600}
+.sp-g{margin:0 0 1.1rem}
+.sp-gh{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin:.2rem 0 .5rem}
+.sp-gh h3{margin:0;font-family:var(--f-display);font-weight:600;font-size:1.3rem}
+.sp-gh small{color:var(--ink2);font-weight:600}
+.sp{background:var(--panel2);border-radius:1rem;padding:.65rem .85rem;margin-bottom:.5rem}
+.sp-t{display:block;width:100%;text-align:left;background:none;border:0;padding:0;min-height:2.2rem}
+.sp-t b{display:block;font-size:1.08rem}
+.sp-t small{color:var(--ink2);font-weight:600}
+.sp .tags{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.35rem}
+.sp .tag{font-size:.82rem;font-weight:700;padding:.1rem .65rem;border-radius:1rem;background:var(--star-soft);color:var(--star-ink)}
+.sp p{margin:.45rem 0 0;color:var(--ink2);font-size:.98rem;line-height:1.35}
+.sp a{display:inline-block;margin-top:.45rem;font-weight:700}
 .dn{display:block;width:100%;text-align:left;border:0;border-radius:1rem;padding:.55rem .8rem;background:color-mix(in srgb,var(--star) 14%,var(--panel));min-width:0}
 .dn b{display:block;font-family:var(--f-display);font-weight:600;font-size:1.6rem;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dn b.dim{color:var(--ink2);font-weight:500;font-size:1.25rem}
@@ -431,6 +443,7 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <div class="tmrs" id="tmrs"></div>
   <button class="btn" data-act="openTimer">Timer</button>
   <button class="btn" data-act="openTomorrow">Tomorrow</button>
+  <button class="btn" data-act="openSchool" id="schoolBtn" hidden>School<span class="cnt" id="schoolN" hidden></span></button>
   <button class="btn" data-act="openNotes">Notes<span class="cnt" id="noteN" hidden></span></button>
   <button class="btn" data-act="openGroc" id="grocBtn"><svg class="ic s"><use href="#i-cart"/></svg>Groceries<span class="cnt" id="grocN" hidden></span></button>
   <button class="btn" data-act="openRewards" id="rewardsBtn"><svg class="ic star"><use href="#i-star"/></svg>Rewards</button>
@@ -463,7 +476,7 @@ var REWARD_IDEAS = [['Extra screen time (15 min)',10],['Pick the dinner',15],['P
 var S = {
   parentUntil:0, timers:[], alarm:null,
   ready:false, store:null, storeKind:'',
-  members:[], chores:[], rewards:[], ledger:[], events:[], meals:[], groceries:[], notes:[], goal:null, view:[], cfg:{}, cel:null,
+  members:[], chores:[], rewards:[], ledger:[], events:[], meals:[], groceries:[], notes:[], school:[], goal:null, view:[], cfg:{}, cel:null,
   idx:{done:new Map(), pend:new Map(), rt:new Set(), bal:{}},
   ui:{overlay:null, tab:'family', weekOffset:0, monthOffset:0, calMode:'week', day:null, choreFor:null, rm:null, confirm:null, del:null, editChore:null, event:null},
   pop:null, undo:null
@@ -1276,6 +1289,15 @@ function renderSide(){
     + '<small class="k" style="margin-top:.3rem">Need from the store</small>'
     + (gl ? '<div class="gl">'+gl+'</div>' : '<p class="none">Nothing on the list.</p>')
     + '</section>';
+  if(S.school.length){
+    var sp = schoolPosts().filter(function(p){ return Date.now() - new Date(p.at || 0).getTime() < 10 * 864e5; }), su = schoolUnreadTotal();
+    var sl = sp.slice(0, 3).map(function(p){
+      var c = p.child ? S.members.filter(function(m){ return m.id === p.child; })[0] : null;
+      return '<button class="ln" data-act="openSchool"><i style="--c:'+(c ? c.color : 'var(--ink2)')+'"></i><span class="t">'+esc(spWhen(p.at))+'</span><span class="n">'+esc(p.title)+'</span></button>';
+    }).join('');
+    html += '<section class="sc"><div class="sc-h"><h3>School</h3><button class="btn" data-act="openSchool">'+(su ? su+' unread' : 'All posts')+'</button></div>'
+      + (sl || '<p class="none">No new posts this week.</p>') + '</section>';
+  }
   setHtml(el, html);
 }
 
@@ -1327,6 +1349,43 @@ function activityHtml(mid){
 function sourceLabel(e){
   var s = e.source === 'google' ? 'Google Calendar' : e.source === 'school' ? 'School' : e.source ? 'Calendar feed' : 'This board';
   return s + (e.source && e.cal ? ' ('+e.cal+')' : '');
+}
+/* ---------- school: ParentSquare posts and unread messages, filled in by the server ---------- */
+function schoolPosts(){ return S.school.filter(function(d){ return d.kind === 'post'; }).sort(function(a, b){ return String(b.at || '') < String(a.at || '') ? -1 : 1; }); }
+function schoolUnreadTotal(){ return S.school.reduce(function(n, d){ return n + (d.kind === 'unread' ? (+d.n || 0) : 0); }, 0); }
+function spWhen(at){
+  if(!at) return '';
+  var d = new Date(at), td = new Date(), k = dkey(d);
+  return k === dkey(td) ? 'Today' : k === dkey(addDays(td, -1)) ? 'Yesterday' : d.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'});
+}
+function spPost(p){
+  var open = S.ui.sp === p.id, tags = '';
+  if(p.pinned) tags += '<span class="tag">Pinned</span>';
+  if(p.eventAt){ var ed = new Date(p.eventAt); tags += '<span class="tag">'+esc(ed.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})+', '+fmtTime(ed))+'</span>'; }
+  (p.chips || []).forEach(function(c){ tags += '<span class="tag">'+esc(c)+'</span>'; });
+  return '<div class="sp"><button class="sp-t" data-act="spToggle" data-id="'+esc(p.id)+'" aria-expanded="'+open+'"><b>'+esc(p.title)+'</b>'
+    + '<small>'+esc((p.author || '')+(p.author && p.at ? ', ' : '')+spWhen(p.at))+'</small>'+(tags ? '<span class="tags">'+tags+'</span>' : '')+'</button>'
+    + (open ? (p.snippet ? '<p>'+esc(p.snippet)+'</p>' : '')+'<a href="'+esc(p.url)+'" target="_blank" rel="noopener">Open in ParentSquare</a>' : '')+'</div>';
+}
+function schoolView(){
+  var posts = schoolPosts(), ms = sortBy(S.members, function(m){ return (m.order||0)+'|'+m.name; });
+  var st = S.school.filter(function(d){ return d.kind === 'status'; })[0];
+  var unread = {}; S.school.forEach(function(d){ if(d.kind === 'unread' && d.n > 0) unread[d.child || d.childName || d.school] = d; });
+  var groups = [], used = {};
+  ms.forEach(function(m){
+    var mine = posts.filter(function(p){ return p.child === m.id; }), un = unread[m.id] || unread[m.name];
+    if(!mine.length && !un) return;
+    mine.forEach(function(p){ used[p.id] = 1; });
+    groups.push({head:'<div class="sp-gh">'+avatar(m,'sm')+'<h3>'+esc(m.name)+'</h3><small>'+esc((mine[0] && mine[0].school) || (un && un.school) || '')+'</small>'
+      + (un ? '<a class="chip on" style="--mc:'+m.color+';text-decoration:none" href="'+esc(un.url)+'" target="_blank" rel="noopener">'+un.n+' unread message'+(un.n === 1 ? '' : 's')+'</a>' : '')+'</div>', posts:mine.slice(0, 6)});
+  });
+  var district = posts.filter(function(p){ return !used[p.id]; });
+  if(district.length) groups.push({head:'<div class="sp-gh"><h3>District and school-wide</h3></div>', posts:district.slice(0, 6)});
+  var body = groups.map(function(g){ return '<div class="sp-g">'+g.head+g.posts.map(spPost).join('')+'</div>'; }).join('');
+  return '<div class="sh"><h2>School</h2>'+close()+'</div>'
+    + (st && !st.ok ? '<p class="hint" style="color:var(--bad)">ParentSquare: '+esc(st.message || 'could not be read just now')+'. Showing what was last seen.</p>' : '')
+    + (body || '<p class="hint">No school posts yet.</p>')
+    + '<p class="hint">From ParentSquare, refreshed every few minutes. Tap a post to read more.</p>';
 }
 function eventView(){
   var e = S.ui.ev; if(!e) return '<div class="sh"><h2>Event</h2>'+close()+'</div>';
@@ -1661,7 +1720,7 @@ function displayTab(){
 function build(){
   var o = S.ui.overlay;
   return o === 'rewards' ? rewardsView() : o === 'event' ? eventView() : (o === 'eform' && S.ui.form) ? formView()
-    : o === 'day' ? dayView() : o === 'groceries' ? grocView() : o === 'notes' ? notesView() : o === 'approve' ? approveView() : o === 'timer' ? timerView() : o === 'tomorrow' ? tomorrowView() : (o === 'meal' && S.ui.meal) ? mealView() : setupView();
+    : o === 'day' ? dayView() : o === 'groceries' ? grocView() : o === 'notes' ? notesView() : o === 'school' ? schoolView() : o === 'approve' ? approveView() : o === 'timer' ? timerView() : o === 'tomorrow' ? tomorrowView() : (o === 'meal' && S.ui.meal) ? mealView() : setupView();
 }
 function renderOverlay(force){
   var sc = $('#scrim'), sheet = $('#sheet');
@@ -1693,6 +1752,7 @@ function renderAll(){
   var wxe = $('#wx'), wh = S.ready ? wxHtml() : ''; wxe.hidden = !wh; setHtml(wxe, wh);
   var ab = $('#apvBtn'), pc = S.idx.pend.size; ab.hidden = !pc; $('#apvN').textContent = pc; $('#apvN').hidden = !pc;
   var nn = $('#noteN'); nn.textContent = S.notes.length; nn.hidden = !S.notes.length;
+  var sb = $('#schoolBtn'), su = schoolUnreadTotal(); sb.hidden = !S.school.length; $('#schoolN').textContent = su; $('#schoolN').hidden = !su;
   var gc = grocCount(), gn = $('#grocN'); gn.textContent = gc; gn.hidden = !gc;
 }
 
@@ -1828,6 +1888,8 @@ var H = {
   srvSet:function(){ var u = ($('#srv-url') && $('#srv-url').value || '').trim(); if(!u) return; if(!/^https?:\/\//.test(u)) u = 'http://'+u; if(window.KBApp && KBApp.setServer) KBApp.setServer(u); },
   srvOff:function(){ if(window.KBApp && KBApp.setServer) KBApp.setServer(''); },
   openNotes:function(){ openOv('notes'); },
+  openSchool:function(){ S.ui.sp = null; openOv('school'); },
+  spToggle:function(t){ S.ui.sp = S.ui.sp === t.dataset.id ? null : t.dataset.id; renderOverlay(true); },
   wxFind:geoSearch,
   wxPick:function(t){ var r = S.ui.geo[+t.dataset.i]; if(!r) return; S.ui.geo = null; setCfg({wx:{name:r.name, lat:r.lat, lon:r.lon}}); loadWx(true); },
   wxOff:function(){ var n = {}; Object.keys(S.cfg||{}).forEach(function(k){ if(k !== 'id' && k !== 'wx') n[k] = S.cfg[k]; }); S.cfg = clone(n); S.cfg.id = 'display'; S.store.set('config', 'display', n); WX.d = null; renderOverlay(true); renderAll(); },
@@ -2046,6 +2108,7 @@ function boot(){
     S.store.subscribe('meals', function(a){ S.meals = a; renderAll(); });
     S.store.subscribe('groceries', function(a){ S.groceries = a; renderAll(); });
     S.store.subscribe('notes', function(a){ S.notes = a; renderAll(); });
+    S.store.subscribe('school', function(a){ S.school = a; renderAll(); });
     S.store.subscribe('config', function(a){ S.goal = a.filter(function(x){ return x.id === 'goal'; })[0] || null; S.cfg = a.filter(function(x){ return x.id === 'display'; })[0] || {}; applyDisplay(); keepAwake(); loadWx(); renderAll(); });
     renderAll();
   });
