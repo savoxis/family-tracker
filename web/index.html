@@ -59,6 +59,30 @@ button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline
 body, .top, main, .panel, .btn, .chore, .ev{-webkit-user-select:none;user-select:none}
 input{-webkit-user-select:text;user-select:text}
 
+/* rail and header */
+.shell{flex:1;min-height:0;display:flex;gap:1.4rem}
+.col{flex:1;min-width:0;min-height:0;display:flex;flex-direction:column;gap:1.1rem}
+.rail{flex:none;width:6.6rem;display:flex;flex-direction:column;align-items:center;gap:.4rem;min-height:0}
+.rail .grow{flex:1}
+.rail-logo{width:4.2rem;height:4.2rem;border-radius:1.35rem;background:var(--ink);color:var(--bg);display:grid;place-items:center;margin-bottom:.7rem;flex:none}
+.rail-logo .ic{width:2.1rem;height:2.1rem}
+.rb{position:relative;flex:none;width:6rem;min-height:5rem;border:0;border-radius:1.6rem;background:transparent;color:var(--ink2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.3rem;font-size:1rem;font-weight:700;padding:0}
+.rb .ic{width:2.1rem;height:2.1rem}
+.rb:active{transform:translateY(1px)}
+.rb.on{background:var(--ink);color:var(--bg)}
+.rb .cnt{position:absolute;top:.4rem;right:.8rem}
+.rb.gear{width:4.2rem;min-height:4.2rem;border-radius:1.35rem}
+.rb.gear::after{left:1rem;right:1rem;bottom:.5rem;height:.25rem;border-radius:.2rem}
+.nextup{flex:0 1 auto;min-width:0;max-width:22rem;display:flex;align-items:center;gap:.9rem;text-align:left;background:var(--panel);border:1px solid var(--line);border-radius:1.4rem;padding:.55rem 1.2rem .55rem .8rem;color:var(--ink)}
+.nextup .nu-d{flex:none;width:2.9rem;height:2.9rem;border-radius:50%;background:var(--mc);color:#fff;display:grid;place-items:center;font-family:var(--f-display);font-weight:700;font-size:1.45rem}
+.nextup .nu-d .ic{width:1.5rem;height:1.5rem}
+.nextup span{min-width:0;line-height:1.2}
+.nextup small{display:block;font-size:.8rem;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--ink2)}
+.nextup b{display:block;font-size:1.35rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nextup em{display:block;font-style:normal;font-size:1.05rem;font-weight:600;color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.apv{min-height:4.2rem;border-radius:1.4rem;padding:.4rem 1.4rem;font-size:1.2rem;font-weight:800}
+.btn.primary .cnt{background:var(--accent-ink);color:var(--accent)}
+
 /* header */
 .top{display:flex;align-items:center;gap:1.1rem;flex:none}
 .clockbox{display:flex;align-items:baseline;gap:1.2rem}
@@ -317,6 +341,16 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
 @media (max-width:1000px) and (max-aspect-ratio:133/100), (max-width:1000px) and (max-height:399px){
   html,body{height:auto}
   body{min-height:100%;overflow:visible}
+  .shell{flex:none;flex-direction:column;gap:.8rem}
+  .col{flex:none}
+  .rail{width:auto;flex-direction:row;flex-wrap:wrap;justify-content:center;gap:.5rem}
+  .rail-logo,.rail .grow{display:none}
+  .rb{width:auto;flex:1 1 auto;min-height:3.4rem;flex-direction:row;gap:.5rem;padding:0 1rem;border-radius:1rem;border:1px solid var(--line);background:var(--panel);font-size:1.05rem}
+  .rb .ic{width:1.4rem;height:1.4rem}
+  .rb .cnt{position:static}
+  .rb.on{border-color:transparent}
+  .rb.gear{width:3.6rem;min-height:3.4rem;flex:none;border-radius:1rem}
+  .rb.gear::after{left:0;right:0;bottom:0}
   main{grid-template-columns:minmax(0,1fr);grid-template-rows:none;grid-auto-rows:auto;flex:none}
   .side{overflow:visible}
   .clock{font-size:3.2rem}
@@ -338,8 +372,9 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
   .clock small{font-size:1.1rem}
   .date{font-size:1.05rem;text-align:right}
   .tonight{flex:1 1 100%;max-width:none}
-  .top .btn{flex:1 1 auto;min-height:3.1rem;padding:.4rem .7rem;font-size:.95rem}
-  .top .gear{flex:none;width:3.1rem}
+  .rb{min-height:3.1rem;padding:0 .7rem;font-size:.95rem}
+  .rb.gear{width:3.1rem;min-height:3.1rem}
+  .nextup{flex:1 1 100%;max-width:none}
   .cal{padding:.8rem}
   .cal-head{flex-wrap:wrap}
   .cal-head h2{font-size:1.45rem}
@@ -358,10 +393,10 @@ dl.ev-d dd{margin:0;overflow-wrap:anywhere}
 
 .pic{flex:none;font-size:2.1rem;line-height:1;width:2.7rem;text-align:center;font-family:'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif}
 .card.pics .pic{font-size:2.7rem;width:3.3rem}
-.gl{width:1em;height:1em;fill:none;stroke:var(--mc,currentColor);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.14em}
-.pic .gl{font-size:.82em;vertical-align:baseline}
-.gl.sm{width:1.15em;height:1.15em;vertical-align:-.2em;margin-right:.15em}
-.icons .chip .gl{vertical-align:-.12em}
+.gy{width:1em;height:1em;fill:none;stroke:var(--mc,currentColor);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;vertical-align:-.14em}
+.pic .gy{font-size:.82em;vertical-align:baseline}
+.gy.sm{width:1.15em;height:1.15em;vertical-align:-.2em;margin-right:.15em}
+.icons .chip .gy{vertical-align:-.12em}
 .card.pics .ct{font-size:1.1rem}
 .card.pics .chore{min-height:5rem}
 .chore.done .pic{opacity:.45}
@@ -454,9 +489,29 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <symbol id="i-right" viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></symbol>
   <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2.5l2.2 10.5h10.6L20.5 7H6.3"/><circle cx="9" cy="19" r="1.4"/><circle cx="17" cy="19" r="1.4"/></symbol>
   <symbol id="i-cal" viewBox="0 0 24 24"><path d="M4 7h16v13H4zM4 11h16M8 4v4M16 4v4"/></symbol>
+  <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 9.5V20h14V9.5"/></symbol>
+  <symbol id="i-sunrise" viewBox="0 0 24 24"><path d="M7 15a5 5 0 0110 0M12 4v2.5M4.6 8.6l1.7 1.5M19.4 8.6l-1.7 1.5M3 15h2M19 15h2M3 19h18"/></symbol>
+  <symbol id="i-school" viewBox="0 0 24 24"><path d="M3 9l9-5 9 5-9 5zM7 11.5V16c0 1.5 2.2 3 5 3s5-1.5 5-3v-4.5"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24"><path d="M5 4h14v11l-5 5H5zM14 20v-5h5"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24"><path d="M12 5a8 8 0 100 16 8 8 0 000-16zM12 9v4l2.5 2M9.5 2h5"/></symbol>
   <symbol id="i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
 </svg>
 
+<div class="shell">
+<nav class="rail" aria-label="Main">
+  <div class="rail-logo" aria-hidden="true"><svg class="ic"><use href="#i-star"/></svg></div>
+  <button class="rb on" id="railBoard" data-act="goBoard" aria-current="page"><svg class="ic s"><use href="#i-home"/></svg>Board</button>
+  <button class="rb" id="railCal" data-act="openCal"><svg class="ic s"><use href="#i-cal"/></svg>Calendar</button>
+  <button class="rb" id="railTom" data-act="openTomorrow"><svg class="ic s"><use href="#i-sunrise"/></svg>Tomorrow</button>
+  <button class="rb" id="grocBtn" data-act="openGroc"><svg class="ic s"><use href="#i-cart"/></svg>Groceries<span class="cnt" id="grocN" hidden></span></button>
+  <button class="rb" id="schoolBtn" data-act="openSchool" hidden><svg class="ic s"><use href="#i-school"/></svg>School<span class="cnt" id="schoolN" hidden></span></button>
+  <button class="rb" id="railNotes" data-act="openNotes"><svg class="ic s"><use href="#i-note"/></svg>Notes<span class="cnt" id="noteN" hidden></span></button>
+  <button class="rb" id="rewardsBtn" data-act="openRewards"><svg class="ic s"><use href="#i-star"/></svg>Rewards</button>
+  <button class="rb" id="railTimer" data-act="openTimer"><svg class="ic s"><use href="#i-timer"/></svg>Timer</button>
+  <div class="grow"></div>
+  <button class="rb gear" id="gear" aria-label="Setup. Hold to open." title="Hold to open setup"><svg class="ic s"><use href="#i-gear"/></svg></button>
+</nav>
+<div class="col">
 <header class="top">
   <div class="clockbox">
     <div class="clock"><span id="clk">--:--</span><small id="ampm"></small></div>
@@ -466,15 +521,9 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <div class="wx" id="wx" hidden></div>
   <div class="wxweek" id="wxweek" role="group" aria-label="Weather this week" hidden></div>
   <div class="grow"></div>
-  <button class="btn" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
+  <button class="nextup" id="nextup" data-act="nextEv" hidden></button>
+  <button class="btn primary apv" data-act="openApprove" id="apvBtn" hidden>Approve<span class="cnt" id="apvN"></span></button>
   <div class="tmrs" id="tmrs"></div>
-  <button class="btn" data-act="openTimer">Timer</button>
-  <button class="btn" data-act="openTomorrow">Tomorrow</button>
-  <button class="btn" data-act="openSchool" id="schoolBtn" hidden>School<span class="cnt" id="schoolN" hidden></span></button>
-  <button class="btn" data-act="openNotes">Notes<span class="cnt" id="noteN" hidden></span></button>
-  <button class="btn" data-act="openGroc" id="grocBtn"><svg class="ic s"><use href="#i-cart"/></svg>Groceries<span class="cnt" id="grocN" hidden></span></button>
-  <button class="btn" data-act="openRewards" id="rewardsBtn"><svg class="ic star"><use href="#i-star"/></svg>Rewards</button>
-  <button class="btn gear" id="gear" aria-label="Setup. Hold to open." title="Hold to open setup"><svg class="ic s"><use href="#i-gear"/></svg></button>
 </header>
 <div class="notice" id="notice" hidden></div>
 
@@ -483,6 +532,8 @@ textarea.inp{width:100%;min-height:7rem;font-size:.85rem;font-family:monospace;b
   <aside class="side" id="side" aria-label="Today and food"></aside>
   <section class="panel cal" id="cal" aria-label="Calendar"></section>
 </main>
+</div>
+</div>
 
 <div id="scrim" hidden><div id="sheet" role="dialog" aria-modal="true"></div></div>
 <div id="toast" hidden></div>
@@ -509,6 +560,7 @@ var S = {
   pop:null, undo:null
 };
 var db = null;
+var lastMin = -1;
 var ptrDown = false, pendingOv = false, lastDay = '', lastTouch = Date.now();
 
 /* ---------- helpers ---------- */
@@ -970,7 +1022,7 @@ function glyph(e, cls){
   if(!e) return '';
   if(e === '\u2B50') return '<svg class="ic star"><use href="#i-star"/></svg>';
   var g = GLYPHS[e];
-  return g ? '<svg class="gl'+(cls ? ' '+cls : '')+'" viewBox="0 0 24 24" aria-hidden="true">'+g+'</svg>' : e;
+  return g ? '<svg class="gy'+(cls ? ' '+cls : '')+'" viewBox="0 0 24 24" aria-hidden="true">'+g+'</svg>' : e;
 }
 function starGuess(t){
   t = String(t||'').toLowerCase();
@@ -999,6 +1051,35 @@ function upcoming(){
   });
   out.sort(function(x, y){ return x.n - y.n; });
   return out.slice(0, 2);
+}
+// The header tile: the next timed event that has not started yet, if it is within a day and a half.
+function nextUpEv(){
+  var now = new Date(), best = null;
+  localEvs(addDays(now, 0), addDays(now, 2)).forEach(function(e){
+    if(e.allDay || e.mk || !e.st || e.st <= now || e.st - now > 36 * 3600000) return;
+    if(!best || e.st < best.st) best = e;
+  });
+  return best;
+}
+function nextUpWhen(e){
+  var now = new Date(), min = Math.max(1, Math.round((e.st - now) / 60000));
+  var m = S.members.filter(function(x){ return x.id === e.who; })[0], who = m ? m.name + ', ' : '';
+  if(dkey(e.st) !== dkey(now)) return who + (dkey(e.st) === dkey(addDays(now, 1)) ? 'tomorrow' : e.st.toLocaleDateString([], {weekday:'long'})) + ' ' + fmtTime(e.st);
+  if(min < 60) return who + 'in ' + min + ' min';
+  if(min < 360) return who + 'in ' + Math.floor(min / 60) + ' h' + (min % 60 ? ' ' + (min % 60) + ' min' : '');
+  return who + 'at ' + fmtTime(e.st);
+}
+function renderNext(){
+  var el = $('#nextup'), e = S.ready ? nextUpEv() : null;
+  S.nextEv = e; el.hidden = !e; if(!e) return;
+  var m = S.members.filter(function(x){ return x.id === e.who; })[0];
+  setHtml(el, '<span class="nu-d" style="--mc:' + e.color + '">' + (m ? esc(initial(m.name)) : '<svg class="ic s"><use href="#i-cal"/></svg>') + '</span><span><small>Next up</small><b>' + esc(e.title) + '</b><em>' + esc(nextUpWhen(e)) + '</em></span>');
+}
+// The rail highlights the place that is open.
+function railActive(){
+  var ov = S.ui.overlay, map = {groceries:'grocBtn', school:'schoolBtn', notes:'railNotes', rewards:'rewardsBtn', timer:'railTimer', tomorrow:'railTom'};
+  var on = document.body.classList.contains('calopen') ? 'railCal' : (ov && map[ov]) || 'railBoard';
+  document.querySelectorAll('.rb').forEach(function(b){ var is = b.id === on; b.classList.toggle('on', is); if(is) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current'); });
 }
 function stripHtml(){
   var g = S.goal, parts = '';
@@ -1929,6 +2010,7 @@ function build(){
     : o === 'day' ? dayView() : o === 'groceries' ? grocView() : o === 'notes' ? notesView() : o === 'school' ? schoolView() : o === 'approve' ? approveView() : o === 'timer' ? timerView() : o === 'tomorrow' ? tomorrowView() : (o === 'meal' && S.ui.meal) ? mealView() : setupView();
 }
 function renderOverlay(force){
+  railActive();
   var sc = $('#scrim'), sheet = $('#sheet');
   if(!S.ui.overlay){ sc.hidden = true; return; }
   var a = document.activeElement;
@@ -1958,6 +2040,7 @@ function renderAll(){
   var wxe = $('#wx'), wh = S.ready ? wxHtml() : ''; wxe.hidden = !wh; setHtml(wxe, wh);
   var wkw = $('#wxweek'), wkh = S.ready ? wxWeekHtml() : ''; wkw.hidden = !wkh; setHtml(wkw, wkh);
   wkw.title = wkh ? 'This week in '+((S.cfg.wx && S.cfg.wx.name) || 'your area')+'. '+wxWeekText(WX.d.daily) : '';
+  renderNext();
   var ab = $('#apvBtn'), pc = S.idx.pend.size; ab.hidden = !pc; $('#apvN').textContent = pc; $('#apvN').hidden = !pc;
   var nn = $('#noteN'); nn.textContent = S.notes.length; nn.hidden = !S.notes.length;
   var sb = $('#schoolBtn'), su = schoolUnreadTotal(); sb.hidden = !S.school.length; $('#schoolN').textContent = su; $('#schoolN').hidden = !su;
@@ -2027,8 +2110,10 @@ var H = {
   },
   remDel:function(t){ var l = ((S.cfg && S.cfg.reminders) || []).slice(); l.splice(+t.dataset.i, 1); setCfg({reminders:l}); },
   say:function(t){ sayLeft(t.dataset.m); },
-  openCal:function(){ document.body.classList.add('calopen'); },
-  closeCal:function(){ document.body.classList.remove('calopen'); },
+  openCal:function(){ document.body.classList.add('calopen'); railActive(); },
+  closeCal:function(){ document.body.classList.remove('calopen'); railActive(); },
+  goBoard:function(){ document.body.classList.remove('calopen'); closeOv(); },
+  nextEv:function(){ if(S.nextEv){ S.ui.ev = S.nextEv; openOv('event'); } },
   evSide:function(t){ S.ui.ev = S.sideEvs[+t.dataset.i]; openOv('event'); },
   openApprove:function(){ S.ui.pin = ''; S.ui.then = null; openOv('approve'); },
   openTimer:function(){ openOv('timer'); },
@@ -2227,6 +2312,7 @@ function tick(){
   if(S.ready && S.cfg && S.cfg.wx) loadWx();
   $('#clk').textContent = h+':'+pad(d.getMinutes());
   $('#ampm').textContent = d.getHours() < 12 ? 'AM' : 'PM';
+  if(d.getMinutes() !== lastMin){ lastMin = d.getMinutes(); renderNext(); }
   $('#datestr').textContent = d.toLocaleDateString([], {weekday:'long', month:'long', day:'numeric'});
   var k = dkey(d);
   if(lastDay && k !== lastDay){ lastDay = k; renderAll(); }
