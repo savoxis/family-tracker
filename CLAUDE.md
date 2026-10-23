@@ -23,6 +23,7 @@ Two Claudes touch this repo: a chat session that designs and edits `web/index.ht
 
 - Always `git pull --ff-only` before starting, and again before pushing. Small commits, clear messages, no force pushes.
 - Default for this project: after a change, run `npm test`, then commit and push to `main` without asking for a go-ahead. The owner has pre-approved this. It does not cover force pushes, history rewrites or anything outside this repo.
+- Android APK: only rebuild it when the owner asks. Web changes deploy to UnRAID without it, and the app keeps the older bundled page until it is rebuilt on request. Do not offer or start an APK rebuild on your own after a UI change.
 - The coding agent has direct access to the UnRAID host and the container. The chat session does not and should not try.
 - Live board: https://family.awesomazing.com (container `kitchen-board`). Nginx Proxy Manager restricts it to the home LAN, so it is not reachable from cloud sessions. Verify from inside the LAN or on the host with `curl http://<host>:<port>/api/health`.
 - The repo is public. Never commit family names, chores, seed data, backups or credentials.

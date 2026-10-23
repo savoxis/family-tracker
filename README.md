@@ -48,6 +48,8 @@ Backups: the server copies the board to `<data dir>/backups/board-<UTC time>.jso
 
 ## Android
 
+The APK is rebuilt only on request, not after every UI change. Until then the app keeps the page it was built with, unless it points at the home server below.
+
 ```
 cd android && bash gradlew assembleDebug
 ```
