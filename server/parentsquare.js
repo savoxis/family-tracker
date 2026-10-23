@@ -21,6 +21,23 @@ const decode = (s) => String(s || '').replace(/&nbsp;/g, ' ').replace(/&lt;/g, '
 const clip = (s, n) => { s = String(s).replace(/\s+/g, ' ').trim(); return s.length > n ? s.slice(0, n - 1).trim() + '...' : s; };
 const text = (html) => decode(String(html).replace(/<!--[\s\S]*?-->/g, ' ').replace(/<(style|script)[\s\S]*?<\/\1>/gi, ' ').replace(/<br\s*\/?>|<\/(p|div|li|tr|h\d)>/gi, ' ').replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim();
 
+// The pictures in a post's body (flyers and photos live on ParentSquare's public image host). Skips tiny
+// tracking pixels and icons, keeps each address once, and caps the count so a newsletter cannot flood the board.
+function images(chunk) {
+  const out = [];
+  const desc = chunk.indexOf('class="description');
+  for (const m of (desc > -1 ? chunk.slice(desc, desc + 60000) : '').matchAll(/<img\b[^>]*>/gi)) {
+    const tag = m[0];
+    const src = decode((/\bsrc="([^"]+)"/i.exec(tag) || [])[1] || '').trim();
+    if (!/^https:\/\//i.test(src) || src.length > 500 || out.indexOf(src) > -1) continue;
+    const w = parseInt((/\bwidth="?(\d+)/i.exec(tag) || [])[1] || '0', 10), h = parseInt((/\bheight="?(\d+)/i.exec(tag) || [])[1] || '0', 10);
+    if ((w && w <= 48) || (h && h <= 48) || /emoji|spacer|pixel|tracking|beacon/i.test(src + (/class="([^"]*)"/i.exec(tag) || [])[1])) continue;
+    out.push(src);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
 // Pulls the posts and the unread message count out of a school's posts page.
 function parseFeed(html) {
   const posts = [];
@@ -44,7 +61,7 @@ function parseFeed(html) {
     const body = /class="description[^"]*"[^>]*>([\s\S]{0,7000})/.exec(chunk);
     posts.push({
       id: id[1], title: decode(t[1]).trim(), author: a ? decode(a[1]).trim() : '', level, at,
-      pinned: head.indexOf('fa-thumb-tack') > -1, chips, eventAt, snippet: body ? clip(text(body[1]), 240) : ''
+      pinned: head.indexOf('fa-thumb-tack') > -1, chips, eventAt, snippet: body ? clip(text(body[1]), 240) : '', images: images(chunk)
     });
   }
   const u = /Unread Messages:<\/span>\s*(\d+)/.exec(html);
@@ -140,12 +157,15 @@ function create(o) {
         for (const p of r.posts) {
           const key = 'ps-' + p.id;
           if (docs.has(key)) continue; // a district post is listed in every school's feed
-          // A post from the school's own level belongs to that school's child. District posts belong to everyone.
-          const own = !p.level || !r.school || p.level === r.school;
+          // District posts belong to everyone. Everything else in a school's feed (the school itself, or a class or
+          // group like "3rd Grade 2026-2027") belongs to that school's child.
+          const district = /district/i.test(p.level) && p.level !== r.school;
+          const sameAsSchool = !p.level || !r.school || p.level === r.school;
           docs.set(key, {
-            src: 'parentsquare', kind: 'post', sid: s.id, title: p.title, author: p.author, school: own ? (s.name || '') : p.level,
-            level: own ? 'school' : 'district', childName: own ? (s.child || '') : '', at: p.at, pinned: p.pinned, chips: p.chips,
-            eventAt: p.eventAt, snippet: p.snippet, url: base + '/feeds/' + p.id
+            src: 'parentsquare', kind: 'post', sid: s.id, title: p.title, author: p.author, school: district ? p.level : (s.name || ''),
+            level: district ? 'district' : sameAsSchool ? 'school' : 'class', group: district || sameAsSchool ? '' : p.level,
+            childName: district ? '' : (s.child || ''), at: p.at, pinned: p.pinned, chips: p.chips,
+            eventAt: p.eventAt, snippet: p.snippet, images: p.images, url: base + '/feeds/' + p.id
           });
         }
         docs.set('ps-unread-' + s.id, { src: 'parentsquare', kind: 'unread', sid: s.id, n: r.unread, school: s.name || '', childName: s.child || '', url: base + '/schools/' + s.id + '/feeds' });

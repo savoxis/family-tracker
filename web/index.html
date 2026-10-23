@@ -109,6 +109,8 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 27rem;
 .sp .tag{font-size:.82rem;font-weight:700;padding:.1rem .65rem;border-radius:1rem;background:var(--star-soft);color:var(--star-ink)}
 .sp p{margin:.45rem 0 0;color:var(--ink2);font-size:.98rem;line-height:1.35}
 .sp a{display:inline-block;margin-top:.45rem;font-weight:700}
+.sp a.sp-pic{display:block;margin-top:.5rem}
+.sp-img{display:block;width:100%;max-height:26rem;object-fit:contain;border-radius:.8rem;background:var(--panel)}
 .dn{display:block;width:100%;text-align:left;border:0;border-radius:1rem;padding:.55rem .8rem;background:color-mix(in srgb,var(--star) 14%,var(--panel));min-width:0}
 .dn b{display:block;font-family:var(--f-display);font-weight:600;font-size:1.6rem;line-height:1.1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dn b.dim{color:var(--ink2);font-weight:500;font-size:1.25rem}
@@ -1363,9 +1365,12 @@ function spPost(p){
   if(p.pinned) tags += '<span class="tag">Pinned</span>';
   if(p.eventAt){ var ed = new Date(p.eventAt); tags += '<span class="tag">'+esc(ed.toLocaleDateString([], {weekday:'short', month:'short', day:'numeric'})+', '+fmtTime(ed))+'</span>'; }
   (p.chips || []).forEach(function(c){ tags += '<span class="tag">'+esc(c)+'</span>'; });
+  var im = (p.images || []).filter(function(u){ return /^https:\/\//i.test(u); });
+  if(im.length) tags += '<span class="tag">'+im.length+(im.length === 1 ? ' picture' : ' pictures')+'</span>';
+  var pics = open ? im.map(function(u){ return '<a class="sp-pic" href="'+esc(u)+'" target="_blank" rel="noopener"><img class="sp-img" loading="lazy" referrerpolicy="no-referrer" alt="Picture from the post" src="'+esc(u)+'"></a>'; }).join('') : '';
   return '<div class="sp"><button class="sp-t" data-act="spToggle" data-id="'+esc(p.id)+'" aria-expanded="'+open+'"><b>'+esc(p.title)+'</b>'
-    + '<small>'+esc((p.author || '')+(p.author && p.at ? ', ' : '')+spWhen(p.at))+'</small>'+(tags ? '<span class="tags">'+tags+'</span>' : '')+'</button>'
-    + (open ? (p.snippet ? '<p>'+esc(p.snippet)+'</p>' : '')+'<a href="'+esc(p.url)+'" target="_blank" rel="noopener">Open in ParentSquare</a>' : '')+'</div>';
+    + '<small>'+esc((p.author || '')+(p.author && p.at ? ', ' : '')+spWhen(p.at)+(p.group ? ', '+p.group : ''))+'</small>'+(tags ? '<span class="tags">'+tags+'</span>' : '')+'</button>'
+    + (open ? (p.snippet ? '<p>'+esc(p.snippet)+'</p>' : '')+pics+'<a href="'+esc(p.url)+'" target="_blank" rel="noopener">Open in ParentSquare</a>' : '')+'</div>';
 }
 function schoolView(){
   var posts = schoolPosts(), ms = sortBy(S.members, function(m){ return (m.order||0)+'|'+m.name; });

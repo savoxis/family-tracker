@@ -10,7 +10,7 @@ const post = (o) => '<div id="feed_' + o.id + '" data-feed-levels="[&quot;' + o.
   + '</span></a></div><ul class="feed-metadata">' + (o.chips || []).map((c) => (/RSVP/.test(c) ? '<div class="color-highlight"><span class="rsvp-total">' + c + '</span></div>' : '<span class="color-highlight">' + c + '</span>')).join('<span aria-hidden="true">&bull;</span>')
   + '<li class="feed-metadata-from"><a class="user-name " aria-label="Posted by ' + o.author + '" href="/u">' + o.author + '</a></li><li class="feed-metadata-time"><span class="time-ago" data-timestamp="' + (o.ts || '2026-10-05 16:00:00+00:00') + '"></span><span class="text-dark">' + o.level + '</span></li></ul></div>'
   + (o.event ? '<a href="http://www.google.com/calendar/event?action=TEMPLATE&amp;text=x&amp;dates=' + o.event + '/20261031T230000Z">Google Calendar</a>' : '')
-  + '<div class="description truncated-text" dir="ltr"><!-- note --><p>' + (o.body || '') + '</p></div></div></div>';
+  + '<div class="description truncated-text" dir="ltr"><!-- note --><p>' + (o.body || '') + '</p>' + (o.imgs || '') + '</div></div></div>';
 
 // A small stand-in for ParentSquare: CSRF token, cookie session, redirect to /signin when signed out.
 function fakeSite() {
@@ -72,12 +72,22 @@ test('reads posts, flags, event dates, previews and the unread count out of the 
   assert.deepStrictEqual(ps.parseFeed('<html></html>'), { posts: [], unread: 0, school: '' });
 });
 
+test('post pictures are collected once, small and tracking images are skipped', () => {
+  const flyer = 'https://posts.example.com/inline_images_abc_1-flyer+one.png';
+  const imgs = '<img src="' + flyer + '"><img src="' + flyer + '"><img src="https://x.example.com/p.gif" width="1" height="1"><img src="http://insecure.example.com/a.png">'
+    + '<img class="emoji" src="https://x.example.com/smile.png"><img src="https://posts.example.com/photo&amp;x=1.jpg" width="640"><img src="https://x.example.com/2.jpg"><img src="https://x.example.com/3.jpg"><img src="https://x.example.com/4.jpg">';
+  const r = ps.parseFeed('<title>Posts | Brockway Elementary | ParentSquare</title>' + post({ id: 5, title: 'Flyer', author: 'x', level: 'Brockway Elementary', imgs })
+    + post({ id: 6, title: 'No pictures', author: 'x', level: 'Brockway Elementary' }));
+  assert.deepStrictEqual(r.posts[0].images, [flyer, 'https://posts.example.com/photo&x=1.jpg', 'https://x.example.com/2.jpg', 'https://x.example.com/3.jpg']);
+  assert.deepStrictEqual(r.posts[1].images, []);
+});
+
 test('each post lands with the right child, district posts once, unread counts per school', async () => {
   const site = fakeSite();
   const base = await site.listen();
   const district = { id: 301, title: 'District closure', author: 'Dr. Kim', level: 'Winston Dillard School District' };
   site.schools = {
-    1: { name: 'Brockway Elementary', unread: 2, posts: [{ id: 102, title: 'Trunk or Treat', author: 'Ms. Lee', level: 'Brockway Elementary', chips: ['1 form'] }, district] },
+    1: { name: 'Brockway Elementary', unread: 2, posts: [{ id: 102, title: 'Trunk or Treat', author: 'Ms. Lee', level: 'Brockway Elementary', chips: ['1 form'] }, { id: 103, title: 'Spelling list', author: 'Mr. Park', level: 'Room 12 2026-2027' }, district] },
     2: { name: 'McGovern Elementary', unread: 0, posts: [{ id: 202, title: 'Field trip', author: 'Mr. Ray', level: 'McGovern Elementary' }, district] }
   };
   const t = mk(site, base);
@@ -85,7 +95,9 @@ test('each post lands with the right child, district posts once, unread counts p
     const docs = await t.w.poll();
     assert.strictEqual(site.logins, 1);
     assert.deepStrictEqual(t.calls[0].ok, ['1', '2']);
-    assert.deepStrictEqual([...docs.keys()].sort(), ['ps-102', 'ps-202', 'ps-301', 'ps-status', 'ps-unread-1', 'ps-unread-2']);
+    assert.deepStrictEqual([...docs.keys()].sort(), ['ps-102', 'ps-103', 'ps-202', 'ps-301', 'ps-status', 'ps-unread-1', 'ps-unread-2']);
+    // a class or group post in a school's feed belongs to that school's child, not to the district
+    assert.deepStrictEqual([docs.get('ps-103').childName, docs.get('ps-103').level, docs.get('ps-103').group, docs.get('ps-103').school], ['Xander', 'class', 'Room 12 2026-2027', 'Brockway Elementary']);
     const d = (k) => docs.get(k);
     assert.deepStrictEqual([d('ps-102').childName, d('ps-102').level, d('ps-102').school, d('ps-102').chips], ['Xander', 'school', 'Brockway Elementary', ['1 form']]);
     assert.deepStrictEqual([d('ps-202').childName, d('ps-202').school], ['Bastian', 'McGovern Elementary']);
