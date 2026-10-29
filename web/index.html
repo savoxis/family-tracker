@@ -1227,7 +1227,7 @@ function moreTab(){
     + (g.on ? '<button class="btn" data-act="goalReset">Start the bar over</button>'+armBtn('goaloff', 'Remove goal', 'goalOff', '') : '')+'</div>'
     + (t ? '<p class="hint">'+t.tot+' of '+g.target+' stars so far.</p>' : '')
 
-    + '<span class="lbl" style="margin-top:1.2rem">Grown-up approval</span><p class="hint" style="margin:.2rem 0 .6rem">Chores wait for a grown-up PIN before stars count.</p>'
+    + '<span class="lbl" style="margin-top:1.2rem">Grown-up approval</span><p class="hint" style="margin:.2rem 0 .6rem">Chores wait for a grown-up PIN before stars count, and rewards and allowance need the PIN to cash in.</p>'
     + '<div class="addrow"><input class="inp num" id="a-pin" type="password" inputmode="numeric" maxlength="4" placeholder="PIN" value="'+esc((S.cfg && S.cfg.pin) || '')+'" autocomplete="off"><button class="btn'+((S.cfg && S.cfg.approve) ? ' primary' : '')+'" data-act="apvToggle">'+((S.cfg && S.cfg.approve) ? 'Approval is on. Turn off' : 'Turn on approval')+'</button></div>'
     + '<span class="lbl" style="margin-top:1.2rem">Allowance</span><p class="hint" style="margin:.2rem 0 .6rem">Show dollars next to stars. Set 0 to hide.</p>'
     + '<div class="addrow"><span class="hint" style="margin:0">1 star =</span><input class="inp num" id="a-rate" type="number" min="0" max="1000" inputmode="numeric" value="'+rateC()+'"><span class="hint" style="margin:0">cents</span><button class="btn" data-act="rateSave">Save</button></div>'
@@ -1358,7 +1358,8 @@ function pinPad(then){
 }
 function approveView(){
   var head = '<div class="sh"><h2>Grown-up check</h2>'+close()+'</div>';
-  if(!parentOK()) return head + pinPad(S.ui.then ? 'Enter the grown-up PIN to continue' : 'Enter the grown-up PIN to approve chores');
+  var th = S.ui.then || '';
+  if(!parentOK()) return head + pinPad(th.indexOf('redeem:') === 0 ? 'Enter the grown-up PIN to cash in this reward' : th ? 'Enter the grown-up PIN to continue' : 'Enter the grown-up PIN to approve chores');
   var items = [];
   S.idx.pend.forEach(function(v){ items.push(v); });
   items.sort(function(a, b){ return a.key < b.key ? -1 : 1; });
@@ -1620,7 +1621,7 @@ function rewardsView(){
       : '<button class="btn'+(ok ? ' primary' : '')+'" data-act="rewardAsk" data-id="'+r.id+'"'+(ok ? '' : ' disabled')+'>'+(ok ? 'Cash in' : plural(r.cost - bal, 'more star'))+'</button>';
     var pct = Math.max(0, Math.min(100, Math.round(bal / r.cost * 100)));
     var prog = '<div class="rw-p'+(ok ? ' ready' : '')+'"><div class="rw-bar" role="progressbar" aria-valuemin="0" aria-valuemax="'+r.cost+'" aria-valuenow="'+Math.max(0, Math.min(r.cost, bal))+'"><i style="width:'+pct+'%"></i></div><span>'+(ok ? 'Ready to cash in' : Math.max(0, bal)+' of '+r.cost+' stars')+'</span></div>';
-    return '<div class="rw'+(ok ? ' ready' : '')+'"><h4>'+esc(r.title)+'</h4><div class="cost">'+r.cost+starIc()+'</div>'+prog+(armed ? '<div class="hint" style="margin:0">Spend '+r.cost+' stars?</div>' : '')+'<div class="acts">'+acts+'</div></div>';
+    return '<div class="rw'+(ok ? ' ready' : '')+'"><h4>'+esc(r.title)+'</h4><div class="cost">'+r.cost+starIc()+'</div>'+prog+(armed ? '<div class="hint" style="margin:0">Spend '+r.cost+' stars?'+((S.cfg && S.cfg.approve && !parentOK()) ? ' A grown-up PIN comes next.' : '')+'</div>' : '')+'<div class="acts">'+acts+'</div></div>';
   }).join('');
   return '<div class="sh"><h2>Reward shop</h2>'+close()+'</div><div class="pick">'+pick+'</div>'
     + (rateC() && bal > 0 ? '<div class="facts"><button class="btn'+(S.ui.del === 'payout' ? ' arm' : '')+'" data-act="payout">'+(S.ui.del === 'payout' ? 'Tap again to pay '+usd(bal) : 'Pay out '+usd(bal)+' allowance')+'</button></div>' : '')
@@ -2265,6 +2266,7 @@ var H = {
         S.parentUntil = Date.now() + 300000; S.ui.pin = '';
         var th = S.ui.then; S.ui.then = null;
         if(th && th.indexOf('payout:') === 0){ doPayout(th.slice(7)); closeOv(); renderAll(); return; }
+        if(th && th.indexOf('redeem:') === 0){ var q = th.slice(7).split(':'); openOv('rewards'); redeem(q[0], q[1]); renderAll(); return; }
         if(th === 'close'){ closeOv(); renderAll(); return; }
       } else { S.ui.pin = ''; toast('Wrong PIN'); }
     }
@@ -2390,7 +2392,11 @@ var H = {
   pickMember:function(t){ S.ui.rm = t.dataset.id; S.ui.confirm = null; renderOverlay(true); },
   rewardAsk:function(t){ S.ui.confirm = {m:S.ui.rm, r:t.dataset.id}; renderOverlay(true); },
   rewardNo:function(){ S.ui.confirm = null; renderOverlay(true); },
-  rewardYes:function(t){ redeem(S.ui.rm, t.dataset.id); },
+  rewardYes:function(t){
+    var mid = S.ui.rm, rid = t.dataset.id; if(!mid) return;
+    if(S.cfg && S.cfg.approve && !parentOK()){ S.ui.pin = ''; S.ui.then = 'redeem:'+mid+':'+rid; openOv('approve'); return; }
+    redeem(mid, rid);
+  },
   addMember:addMember,
   delMember:function(t){ arm('m'+t.dataset.id, function(){ delMember(t.dataset.id); }); },
   color:function(t){ var m = S.members.filter(function(x){ return x.id === t.dataset.id; })[0]; if(!m) return; var n = stripId(m); n.color = t.dataset.c; S.store.set('members', m.id, n); renderOverlay(true); },
